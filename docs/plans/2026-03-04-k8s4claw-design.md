@@ -1,7 +1,7 @@
 # k8s4claw Design Document
 
 **Date:** 2026-03-04
-**Status:** Approved (Rev 7 — RBAC + type consistency fixes)
+**Status:** Approved (Rev 8 — final polish)
 **Author:** Prismer-AI Team
 
 ## 1. Overview
@@ -556,13 +556,13 @@ The Operator manages Claw instances as **StatefulSet** (not Deployment). Rationa
 
 | Factor | StatefulSet | Deployment |
 |--------|-------------|------------|
-| PVC binding | Stable — PVC stays bound across reschedule | Requires manual PVC management |
+| PVC binding | Compatible with Operator-managed PVCs (stable pod name → deterministic PVC refs) | Random pod name complicates PVC naming |
 | Network identity | Stable hostname (`<name>-0`) | Random pod name |
 | Ordered shutdown | Guaranteed (critical for WAL flush) | Best-effort |
 | Scale-to-zero | Clean (preserves PVCs) | PVCs may be orphaned |
-| Auto-update | `OnDelete` or `RollingUpdate` with partition | Only `RollingUpdate` |
+| Auto-update | `OnDelete` or `RollingUpdate` with partition | `RollingUpdate` or `Recreate` (no per-pod control) |
 
-Key: AI agents are **stateful workloads** — they have session PVCs, WAL data, and workspace. StatefulSet provides the strongest guarantees for PVC-to-Pod affinity, which is critical for data integrity after pod rescheduling.
+Key: AI agents are **stateful workloads** — they have session PVCs, WAL data, and workspace. PVCs are managed directly by the Operator (with `ownerReferences` to the Claw CR), not via StatefulSet `volumeClaimTemplates`. StatefulSet is chosen primarily for stable hostname, ordered shutdown guarantees, and future multi-replica support.
 
 When `replicas` is introduced in a future API version, StatefulSet's ordered scaling and stable network identity will also be required for multi-instance coordination.
 
@@ -870,11 +870,10 @@ Sidecar buffer hits highWatermark
 
 | Data Type | Lifecycle | Loss Impact | Storage |
 |-----------|-----------|-------------|---------|
-| Session state | Per-instance | Agent loses context | PVC (fast SSD) + CSI snapshots |
+| Session state (incl. runtime data) | Per-instance | Agent loses context, cannot audit | PVC (fast SSD) + CSI snapshots |
 | Output artifacts | Long-term | User work lost | PVC + S3 archival |
 | Workspace | Medium-term | Regeneratable, wastes compute | PVC (standard) |
 | Model cache | Rebuildable | Slower cold start | emptyDir (tmpfs) |
-| Runtime data | Per-instance | Cannot audit | PVC (session) |
 | Shared resources | Long-term | Team collaboration breaks | RWX PVC |
 
 ### 7.2 CRD Persistence Spec
@@ -1118,11 +1117,14 @@ spec:
           protocol: TCP
 
     # HTTPS — AI provider APIs (OpenAI, Anthropic, etc.)
+    # Note: This also covers kubernetes.default.svc:443. The primary mitigation
+    # is automountServiceAccountToken: false (no token = no authn). The port 6443
+    # rule below targets direct API server access bypassing the Service.
     - ports:
         - port: 443
           protocol: TCP
 
-    # Kubernetes API — only when selfConfigure enabled
+    # Kubernetes API (direct) — only when selfConfigure enabled
     # (conditionally injected by Operator)
     - ports:
         - port: 6443
@@ -1510,6 +1512,8 @@ The Operator emits structured Events for key lifecycle transitions:
 ```go
 import "github.com/prismer-ai/k8s4claw/sdk"
 
+ctx := context.Background()
+
 client, err := sdk.NewClient()
 if err != nil {
     log.Fatalf("failed to create SDK client: %v", err)
@@ -1547,6 +1551,8 @@ fmt.Println(result.Content)
 
 ```go
 import "github.com/prismer-ai/k8s4claw/sdk/channel"
+
+feishu := lark.NewClient() // hypothetical Feishu/Lark API client
 
 adapter := channel.NewAdapter("feishu", channel.Opts{
     Stream: channel.StreamOpts{
@@ -1703,7 +1709,7 @@ k8s4claw/
 │   │   ├── ingress.go         # Ingress with optional Basic Auth
 │   │   ├── pdb.go             # PodDisruptionBudget
 │   │   ├── pvc.go             # PVC lifecycle
-│   │   ├── secret.go          # Gateway token + secret hash
+│   │   ├── secret.go          # Secret hash annotation (Section 3.3)
 │   │   ├── servicemonitor.go  # Prometheus ServiceMonitor
 │   │   ├── prometheusrule.go  # Alerting rules
 │   │   └── grafana_dashboard.go # Grafana dashboard ConfigMaps
@@ -1954,3 +1960,15 @@ Note: Issue numbers C3, H3 are intentionally skipped — they were identified du
 | L2: "PVC becomes unbound" imprecise | LOW | Changed to "PVC becomes unmounted (RWO no longer attached to a node)" (Section 12.2) |
 | L3: `adapter.Run()` error not captured | LOW | Added `if err := adapter.Run()` error handling (Section 11.2) |
 | L4: Missing ExternalSecret in Owns() | LOW | Added `Owns(&externalsecretsv1.ExternalSecret{})` to optional CRD watches (Section 4.9) |
+
+## Appendix G: Final Polish (Rev 8)
+
+| Issue | Severity | Fix |
+|-------|----------|-----|
+| M1: NetworkPolicy port 443 covers K8s API | MEDIUM | Documented trade-off: mitigated by no-token-mount default, added explanatory comment (Section 9.2) |
+| M2: "Gateway token" undefined | MEDIUM | Removed undefined concept, updated comment to reference Secret hash (Section 13) |
+| M3: ADR overstates PVC binding benefit | MEDIUM | Clarified PVCs are Operator-managed, not via volumeClaimTemplates; listed actual StatefulSet benefits (Section 4.4) |
+| L1: ADR Deployment update strategy imprecise | LOW | Added `Recreate` strategy, noted "no per-pod control" (Section 4.4) |
+| L2: SDK example missing `ctx` declaration | LOW | Added `ctx := context.Background()` (Section 11.1) |
+| L3: Channel SDK `feishu` undeclared | LOW | Added `feishu := lark.NewClient()` placeholder (Section 11.2) |
+| L4: Redundant "Runtime data" row | LOW | Merged into "Session state (incl. runtime data)" (Section 7.1) |
