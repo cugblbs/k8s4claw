@@ -1,7 +1,7 @@
 # k8s4claw Design Document
 
 **Date:** 2026-03-04
-**Status:** Approved (Rev 3 — post-openclaw research)
+**Status:** Approved (Rev 4 — post-architectural review)
 **Author:** Prismer-AI Team
 
 ## 1. Overview
@@ -29,10 +29,10 @@ k8s4claw is a Kubernetes Operator + Go SDK for managing heterogeneous AI agent r
 | **Language** | TypeScript/Node.js | TypeScript/Node.js | 100% Rust |
 | **Purpose** | Full-featured AI assistant platform | Lightweight secure personal assistant | High-performance agent runtime |
 | **Memory** | >1GB | ~200MB | <5MB |
-| **Startup** | >500ms | Medium | <10ms |
+| **Startup** | >500ms | ~100ms | <10ms |
 | **Isolation** | App-level permissions | Docker container sandbox | WASM/Landlock/Bubblewrap |
 | **Channels** | 25+ built-in | On-demand (Skills) | Pluggable (Matrix/Discord/Lark...) |
-| **Gateway Port** | 18900 | SQLite polling | 3000 |
+| **Gateway Port** | 18900 | 19000 (via UDS wrapper) | 3000 |
 | **Extension** | Plugins + Skills | Claude Code Skills | WASM plugin engine |
 
 ## 3. CRD Design
@@ -48,10 +48,11 @@ spec:
   # IMMUTABLE after creation. Changing runtime requires delete + recreate.
   runtime: openclaw          # openclaw | nanoclaw | zeroclaw | custom
 
-  # Runtime-specific configuration
+  # Runtime-specific configuration (runtime.RawExtension — supports nested structures)
   config:
     model: "claude-sonnet-4"
     workspace: "/workspace"
+    # Arbitrary runtime-specific config — passed as-is to the runtime container
 
   # Credential management (see Section 3.3 for semantics)
   credentials:
@@ -121,7 +122,7 @@ spec:
       enabled: true
       minAvailable: 1              # for single replica: prevents drain eviction
 
-  # Auto-Update (see Section 14)
+  # Auto-Update (see Section 12)
   autoUpdate:
     enabled: false
     versionConstraint: "~1.x"      # semver constraint
@@ -167,15 +168,17 @@ spec:
     secretRef:
       name: slack-bot-token
 
+  # Unstructured config (apiextensionsv1.JSON — supports nested/array values)
   config:
     appId: A0123456789
     channels: ["#research", "#general"]
 
   # Backpressure tuning (per-channel, overrides defaults)
+  # Watermark values are strings (K8s Quantity convention), validated by webhook: 0.0-1.0, low < high
   backpressure:
     bufferSize: 1024           # ring buffer capacity (default: 1024)
-    highWatermark: 0.8         # trigger slow_down (default: 0.8)
-    lowWatermark: 0.3          # trigger resume (default: 0.3)
+    highWatermark: "0.8"       # trigger slow_down (default: "0.8")
+    lowWatermark: "0.3"        # trigger resume (default: "0.3")
 
   # Resource limits for built-in sidecar (ignored for type: custom)
   resources:
@@ -196,6 +199,16 @@ spec:
     readinessProbe:
       httpGet: { path: /ready, port: 9090 }
 ```
+
+**ClawChannel lifecycle management:**
+
+- ClawChannels are **shared resources** — one channel can be referenced by multiple Claws. Each referencing Claw gets its own sidecar copy in its Pod.
+- ClawChannels have **no ownerReference** (shared lifecycle). They are managed independently by users.
+- **Deletion protection:** The Operator adds a finalizer to ClawChannel. On delete, it checks for referencing Claws:
+  - If references exist → block deletion, set condition `InUse=True` with list of referencing Claws
+  - If no references → remove finalizer, allow deletion
+- **Credential rotation:** When a ClawChannel's `spec.credentials.secretRef` changes, the Operator re-reconciles all Claws referencing that channel (via cross-resource indexer). The Secret hash annotation mechanism triggers rolling updates.
+- **Config changes:** When a ClawChannel spec changes, all referencing Claw Pods are updated (sidecar spec regenerated → StatefulSet rolling update).
 
 ### 3.3 Credential Semantics
 
@@ -249,8 +262,10 @@ The Operator deploys validating and mutating webhooks:
 - Rejects invalid credential combinations (both `secretRef` and `externalSecret` set)
 - Rejects `runtime` field changes on UPDATE (immutable)
 - Rejects `replicas` field (not supported in v1alpha1)
+- Rejects `runAsUser: 0`, `privileged: true`, `SYS_ADMIN` capability (security enforcement)
 - Validates PVC size formats, storageClass references
-- Validates ClawChannel references exist
+- Validates `lowWatermark < highWatermark` for backpressure config
+- **Note:** ClawChannel reference existence is validated during **reconcile** (not webhook), because channels may be created in any order and webhook validation would block legitimate multi-resource applies
 
 **Mutating webhook:**
 - Sets default `reclaimPolicy: Retain` if not specified
@@ -380,8 +395,8 @@ type RuntimeBuilder interface {
 
 // RuntimeValidator validates CRD specs for a specific runtime.
 type RuntimeValidator interface {
-    Validate(spec *v1alpha1.ClawSpec) field.ErrorList
-    ValidateUpdate(old, new *v1alpha1.ClawSpec) field.ErrorList
+    Validate(ctx context.Context, spec *v1alpha1.ClawSpec) field.ErrorList
+    ValidateUpdate(ctx context.Context, old, new *v1alpha1.ClawSpec) field.ErrorList
 }
 
 // RuntimeAdapter combines both for convenience.
@@ -399,6 +414,29 @@ type RuntimeConfig struct {
 ```
 
 New runtimes only need to implement `RuntimeAdapter`.
+
+**Custom runtime support (`runtime: custom`):** For runtimes not built into the Operator, users provide the complete container spec directly in the Claw CR:
+
+```yaml
+spec:
+  runtime: custom
+  customRuntime:
+    image: my-registry/my-agent:v1
+    command: ["/usr/bin/my-agent"]
+    ports:
+      - name: gateway
+        containerPort: 8080
+    resources:
+      requests: { cpu: 500m, memory: 1Gi }
+      limits: { cpu: 2, memory: 4Gi }
+    healthProbe:
+      httpGet: { path: /health, port: 8080 }
+    readinessProbe:
+      httpGet: { path: /ready, port: 8080 }
+    gracefulShutdownSeconds: 30
+```
+
+The Operator's `CustomAdapter` wraps this spec into a PodTemplate, using the user-provided probes and resources. The IPC Bus co-process is still injected into the container entrypoint (as a wrapper binary), so custom runtimes get the same IPC Bus + channel sidecar integration. Custom runtimes are registered at **CRD-level** (not compiled into the Operator) — no fork required.
 
 ### 4.2 Pod Structure
 
@@ -443,7 +481,7 @@ Channel sidecars connect to the Bus via Unix Domain Socket. If the Bus (and runt
 │                                                         │
 │  volumes:                                               │
 │    ipc-socket    (emptyDir)          — Bus socket        │
-│    wal-data      (emptyDir)          — WAL + DLQ        │
+│    wal-data      (emptyDir, 512Mi)   — WAL + DLQ        │
 │    config-vol    (ConfigMap)         — Runtime config    │
 │    session-pvc   (PVC, RWO)          — Session state    │
 │    output-pvc    (PVC, RWO)          — Output artifacts │
@@ -462,7 +500,43 @@ Channel sidecars connect to the Bus via Unix Domain Socket. If the Bus (and runt
 - `readOnlyRootFilesystem: true` on all containers → writable paths via explicit volume mounts (`/tmp`, `/data`, `/var/run/claw`)
 - Archive sidecar is a native sidecar (not CronJob) → shares PVC access, solves mount problem
 
-### 4.3 Resource Defaults
+### 4.3 Runtime Container Images
+
+Each built-in runtime uses a **k8s4claw-specific container image** that embeds the IPC Bus binary alongside the upstream runtime. This is necessary because the IPC Bus runs as a co-process inside the runtime container.
+
+| Runtime | Base Image | Registry | Default Tag |
+|---------|-----------|----------|-------------|
+| OpenClaw | `ghcr.io/prismer-ai/k8s4claw-openclaw` | GHCR | `latest` (auto-update resolves semver) |
+| NanoClaw | `ghcr.io/prismer-ai/k8s4claw-nanoclaw` | GHCR | `latest` |
+| ZeroClaw | `ghcr.io/prismer-ai/k8s4claw-zeroclaw` | GHCR | `latest` |
+| Custom | User-specified | User registry | User-specified |
+
+**Image build strategy:** Each k8s4claw runtime image is built via multi-stage Dockerfile:
+1. Stage 1: Build IPC Bus binary from `cmd/ipcbus/`
+2. Stage 2: Copy IPC Bus binary into upstream runtime image
+3. Entrypoint wrapper starts IPC Bus as co-process, then exec's the runtime
+
+This means the project maintains **3 Dockerfiles** (one per built-in runtime) in `hack/images/`. CI rebuilds on upstream runtime release or IPC Bus changes.
+
+Users can override the image via `spec.image` in the Claw CR. For custom runtimes, users are responsible for embedding the IPC Bus binary (or using the provided wrapper image as a base).
+
+### 4.4 ADR: StatefulSet vs Deployment
+
+The Operator manages Claw instances as **StatefulSet** (not Deployment). Rationale:
+
+| Factor | StatefulSet | Deployment |
+|--------|-------------|------------|
+| PVC binding | Stable — PVC stays bound across reschedule | Requires manual PVC management |
+| Network identity | Stable hostname (`<name>-0`) | Random pod name |
+| Ordered shutdown | Guaranteed (critical for WAL flush) | Best-effort |
+| Scale-to-zero | Clean (preserves PVCs) | PVCs may be orphaned |
+| Auto-update | `OnDelete` or `RollingUpdate` with partition | Only `RollingUpdate` |
+
+Key: AI agents are **stateful workloads** — they have session PVCs, WAL data, and workspace. StatefulSet provides the strongest guarantees for PVC-to-Pod affinity, which is critical for data integrity after pod rescheduling.
+
+When `replicas` is introduced in a future API version, StatefulSet's ordered scaling and stable network identity will also be required for multi-instance coordination.
+
+### 4.5 Resource Defaults
 
 Each container has sensible defaults. Users can override via CRD spec.
 
@@ -478,7 +552,7 @@ Each container has sensible defaults. Users can override via CRD spec.
 
 Note: IPC Bus shares the runtime container's resource allocation (co-process).
 
-### 4.4 ConfigMap Management
+### 4.6 ConfigMap Management
 
 The Operator generates a ConfigMap per Claw instance containing runtime configuration. Three merge modes are supported:
 
@@ -495,7 +569,7 @@ Default mode per runtime:
 
 **PostStart hook:** On container restart (not pod recreation), a PostStart lifecycle hook re-applies Operator-managed config for `DeepMerge` mode, preventing config drift after OOM kills or crashes.
 
-### 4.5 Security Context Defaults
+### 4.7 Security Context Defaults
 
 All containers run with hardened security context by default:
 
@@ -527,7 +601,7 @@ The mutating webhook injects these defaults. Users can relax specific settings v
 - `privileged: true`
 - Adding `SYS_ADMIN` capability
 
-### 4.6 Graceful Shutdown
+### 4.8 Graceful Shutdown
 
 Each runtime defines `GracefulShutdownSeconds()` via the `RuntimeBuilder` interface:
 
@@ -555,7 +629,7 @@ Each runtime defines `GracefulShutdownSeconds()` via the `RuntimeBuilder` interf
 
 `terminationGracePeriodSeconds` is set to `GracefulShutdownSeconds() + 10` (buffer for sidecar drain).
 
-### 4.7 ClawChannel → Pod Injection
+### 4.9 ClawChannel → Pod Injection
 
 When the Operator reconciles a `Claw` CR, it:
 
@@ -566,7 +640,29 @@ When the Operator reconciles a `Claw` CR, it:
 3. Injects sidecar containers into the Pod spec as native sidecars
 4. Mounts shared `ipc-socket` volume into each sidecar
 
-**Cross-resource watch:** The Operator watches `ClawChannel` CRs and triggers re-reconciliation of any `Claw` that references a changed channel.
+**Controller resource watches:** The Claw controller `SetupWithManager` must configure watches for all related resources:
+
+```go
+ctrl.NewControllerManagedBy(mgr).
+    For(&v1alpha1.Claw{}).
+    Owns(&appsv1.StatefulSet{}).
+    Owns(&corev1.PersistentVolumeClaim{}).
+    Owns(&corev1.Service{}).
+    Owns(&corev1.ConfigMap{}).
+    Owns(&corev1.ServiceAccount{}).
+    Owns(&rbacv1.Role{}).
+    Owns(&rbacv1.RoleBinding{}).
+    Owns(&networkingv1.NetworkPolicy{}).
+    Owns(&networkingv1.Ingress{}).
+    Owns(&policyv1.PodDisruptionBudget{}).
+    Watches(&v1alpha1.ClawChannel{}, handler.EnqueueRequestsFromMapFunc(channelToClawMapper)).
+    Watches(&v1alpha1.ClawSelfConfig{}, handler.EnqueueRequestsFromMapFunc(selfConfigToClawMapper)).
+    Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(secretToClawMapper),
+        builder.WithPredicates(predicate.ResourceVersionChangedPredicate{})).
+    Complete(r)
+```
+
+The `secretToClawMapper` uses a field indexer on `spec.credentials.secretRef.name` to efficiently map Secret changes to owning Claws.
 
 ## 5. IPC Bus + Channel Sidecar
 
@@ -675,7 +771,7 @@ NanoClaw's native IPC (shared SQLite + filesystem) is fragile for concurrent acc
 ```
 
 The UDS wrapper:
-- Exposes a Unix Domain Socket on localhost:19000
+- Exposes a TCP listener on localhost:19000
 - Translates to NanoClaw's SQLite write + filesystem IPC internally
 - Serializes writes to SQLite (single-writer lock)
 - Uses `fsnotify` to detect NanoClaw's file-based responses (polling as fallback at 200ms)
@@ -702,7 +798,7 @@ Watermarks are **configurable per-channel** via `ClawChannel.spec.backpressure` 
 |-------|-------------|----------|
 | `normal` | < lowWatermark (default 0.3) | Pass-through |
 | `degraded` | > highWatermark (default 0.8) | Merge deltas |
-| `blocked` | 100% | Spill to disk, pause upstream |
+| `blocked` | 100% | Spill to disk (wal-data, 512Mi sizeLimit), pause upstream |
 
 ### 6.3 Backpressure Flow
 
@@ -767,6 +863,10 @@ persistence:
         prefix: "{{.Namespace}}/{{.Name}}/"
         secretRef:
           name: s3-credentials
+        # Note: Archive credentials are included in the Secret hash computation
+        # (Section 3.3). When this Secret changes, the Claw Pod is rolling-updated
+        # to pick up new S3 credentials. ExternalSecret is also supported here
+        # via the same credential semantics as spec.credentials.
       trigger:
         # Primary: periodic scan (works on all filesystems)
         schedule: "*/15 * * * *"
@@ -933,7 +1033,7 @@ SDK built-in exponential backoff reconnector:
 
 ### 9.1 Pod Security (Defense-in-Depth)
 
-All Claw Pods run with hardened defaults (see Section 4.5 for exact SecurityContext). The security model follows defense-in-depth:
+All Claw Pods run with hardened defaults (see Section 4.7 for exact SecurityContext). The security model follows defense-in-depth:
 
 | Layer | Mechanism | Default |
 |-------|-----------|---------|
@@ -1229,7 +1329,7 @@ status:
 | `claw_autoupdate_applied_total` | Counter | instance, namespace | Updates applied |
 | `claw_autoupdate_rollbacks_total` | Counter | instance, namespace | Rollbacks triggered |
 
-**Runtime metrics** (exposed via IPC Bus `/metrics` sidecar endpoint):
+**Runtime metrics** (exposed by IPC Bus co-process on `localhost:9191/metrics` inside the runtime container; scraped via a `containerPort` declaration on port 9191):
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
@@ -1334,7 +1434,8 @@ if err != nil {
     log.Fatalf("failed to create SDK client: %v", err)
 }
 
-claw, err := client.Create(ctx, &sdk.ClawSpec{
+// Create returns a ClawInstance handle (not a fluent builder)
+instance, err := client.Create(ctx, &sdk.ClawSpec{
     Runtime: sdk.OpenClaw,
     Config: &sdk.RuntimeConfig{
         Environment: map[string]string{"MODEL": "claude-sonnet-4"},
@@ -1344,16 +1445,22 @@ if err != nil {
     log.Fatalf("failed to create claw: %v", err)
 }
 
-if err := claw.SendMessage(ctx, "Analyze this paper"); err != nil {
+// All operations go through client (centralized connection management)
+if err := client.SendMessage(ctx, instance, "Analyze this paper"); err != nil {
     log.Fatalf("failed to send message: %v", err)
 }
 
-result, err := claw.WaitForResult(ctx)
+result, err := client.WaitForResult(ctx, instance)
 if err != nil {
     log.Fatalf("failed to get result: %v", err)
 }
 fmt.Println(result.Content)
 ```
+
+**Communication path:** The SDK communicates with Claw Pods via the Kubernetes API:
+1. **In-cluster:** Service DNS → gateway proxy port
+2. **Out-of-cluster:** `kubectl port-forward` or Ingress (if `spec.ingress.enabled`)
+3. **WaitForResult:** Uses K8s Watch on the Claw CR status conditions (not polling)
 
 ### 11.2 Channel SDK (Custom Channel Development)
 
@@ -1406,8 +1513,10 @@ Idle
   → New version detected
   → Phase 1: Pre-backup (if spec.autoUpdate.preBackup: true)
     → Scale StatefulSet to 0 → Wait for Pod termination
-    → Create backup Job (rclone to S3 or CSI snapshot)
-    → Wait for backup completion
+    → PVC becomes unbound (RWO released) → backup Job can mount it
+    → Create backup via CSI VolumeSnapshot (preferred) or archive sidecar S3 upload logic (reused, no rclone dependency)
+    → Job mounts session/workspace PVCs as read-only (PVC now available since Pod is gone)
+    → Wait for backup completion (timeout: 30m default)
   → Phase 2: Apply update
     → Update image tag in StatefulSet spec
     → StatefulSet controller creates new Pod
@@ -1573,7 +1682,12 @@ k8s4claw/
 │   ├── plans/
 │   │   └── 2026-03-04-k8s4claw-design.md
 │   └── runbooks/              # Alert runbook templates
-├── hack/                      # Dev scripts
+├── hack/
+│   ├── images/                # Runtime container Dockerfiles
+│   │   ├── openclaw.Dockerfile
+│   │   ├── nanoclaw.Dockerfile
+│   │   └── zeroclaw.Dockerfile
+│   └── scripts/               # Dev scripts
 ├── Dockerfile
 ├── Makefile
 ├── go.mod
@@ -1682,3 +1796,27 @@ k8s4claw/
 | ClawSelfConfig CRD | 3.6 | Agent self-modification with Operator-enforced security |
 | Expanded Prometheus metrics | 10.2 | Operator + runtime metrics with proper labels |
 | Skill installation security | 9.4 | NPM_CONFIG_IGNORE_SCRIPTS for supply chain protection |
+
+## Appendix C: Architectural Review Fixes (Rev 4)
+
+| Issue | Severity | Fix |
+|-------|----------|-----|
+| C1: RuntimeValidator missing context.Context | CRITICAL | Added `ctx context.Context` to Validate/ValidateUpdate (Section 4.1) |
+| C2: SDK API instance vs client methods | CRITICAL | Unified to client-level methods `client.SendMessage(instance, ...)` (Section 11.1) |
+| C4: NanoClaw port inconsistency | CRITICAL | Unified to `19000 (via UDS wrapper)` in Section 2, clarified TCP in Section 5.7 |
+| H1: spec.config map[string]string too restrictive | HIGH | Changed to `runtime.RawExtension` for nested config support (Section 3.1) |
+| H2: Backup Job PVC mount undefined | HIGH | Added PVC release + read-only mount strategy (Section 12.2) |
+| H4: StatefulSet choice undocumented | HIGH | Added ADR with comparison table (Section 4.4) |
+| H5: Channel validation timing | HIGH | Moved from webhook to reconcile phase (Section 3.4) |
+| H6: IPC Bus metrics port undefined | HIGH | Defined port 9191, fixed "sidecar endpoint" wording (Section 10.2) |
+| H7: ClawChannel lifecycle undefined | HIGH | Added deletion protection, credential rotation, cross-resource watches (Section 3.2) |
+| M1: Cross-reference "Section 14" wrong | MEDIUM | Fixed to "Section 12" (Section 3.1) |
+| M2: wal-data no sizeLimit | MEDIUM | Added 512Mi sizeLimit to emptyDir (Section 4.2, 6.2) |
+| M3: Archive S3 creds outside hash | MEDIUM | Documented inclusion in Secret hash + ExternalSecret support (Section 7.2) |
+| M4: ClawChannel config map[string]string | MEDIUM | Changed to `apiextensionsv1.JSON` (Section 3.2) |
+| M5: Watermark string type undocumented | MEDIUM | Added type note + webhook validation rules (Section 3.2) |
+| M6: SDK communication path undefined | MEDIUM | Added Service DNS / port-forward / Ingress paths + Watch-based WaitForResult (Section 11.1) |
+| M7: Custom runtime mechanism undefined | MEDIUM | Added `customRuntime` spec with full container override (Section 4.1) |
+| M8: Controller watches incomplete | MEDIUM | Added full `SetupWithManager` with all Owns/Watches (Section 4.9) |
+| M9: rclone dependency | MEDIUM | Replaced with CSI snapshot / archive sidecar reuse (Section 12.2) |
+| M10: Runtime image source undefined | MEDIUM | Added Section 4.3 with image table, build strategy, Dockerfile locations |
