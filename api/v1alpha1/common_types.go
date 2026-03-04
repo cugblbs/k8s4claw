@@ -6,6 +6,7 @@ import corev1 "k8s.io/api/core/v1"
 // +kubebuilder:validation:Enum=openclaw;nanoclaw;zeroclaw;picoclaw;custom
 type RuntimeType string
 
+// RuntimeType constants.
 const (
 	RuntimeOpenClaw RuntimeType = "openclaw"
 	RuntimeNanoClaw RuntimeType = "nanoclaw"
@@ -18,6 +19,7 @@ const (
 // +kubebuilder:validation:Enum=Retain;Archive;Delete
 type ReclaimPolicy string
 
+// ReclaimPolicy constants.
 const (
 	ReclaimRetain  ReclaimPolicy = "Retain"
 	ReclaimArchive ReclaimPolicy = "Archive"
@@ -28,6 +30,7 @@ const (
 // +kubebuilder:validation:Enum=inbound;outbound;bidirectional
 type ChannelMode string
 
+// ChannelMode constants.
 const (
 	ChannelModeInbound       ChannelMode = "inbound"
 	ChannelModeOutbound      ChannelMode = "outbound"

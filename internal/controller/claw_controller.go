@@ -67,7 +67,7 @@ func (r *ClawReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 	// Ensure StatefulSet exists and is up to date.
 	if err := r.ensureStatefulSet(ctx, &claw, adapter); err != nil {
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("failed to ensure StatefulSet: %w", err)
 	}
 
 	// Re-fetch the claw to get latest version after StatefulSet changes.

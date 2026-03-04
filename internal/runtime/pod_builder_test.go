@@ -114,10 +114,8 @@ func TestEmptyDirVolume(t *testing.T) {
 				if !vol.VolumeSource.EmptyDir.SizeLimit.Equal(*tt.sizeLimit) {
 					t.Errorf("SizeLimit = %s; want %s", vol.VolumeSource.EmptyDir.SizeLimit.String(), tt.sizeLimit.String())
 				}
-			} else {
-				if vol.VolumeSource.EmptyDir.SizeLimit != nil {
-					t.Errorf("SizeLimit = %s; want nil", vol.VolumeSource.EmptyDir.SizeLimit.String())
-				}
+			} else if vol.VolumeSource.EmptyDir.SizeLimit != nil {
+				t.Errorf("SizeLimit = %s; want nil", vol.VolumeSource.EmptyDir.SizeLimit.String())
 			}
 		})
 	}

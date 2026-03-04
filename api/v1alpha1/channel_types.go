@@ -2,22 +2,23 @@ package v1alpha1
 
 import (
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // ChannelType defines the type of communication channel.
 // +kubebuilder:validation:Enum=slack;telegram;whatsapp;discord;matrix;webhook;custom
 type ChannelType string
 
+// ChannelType constants.
 const (
-	ChannelTypeSlack     ChannelType = "slack"
-	ChannelTypeTelegram  ChannelType = "telegram"
-	ChannelTypeWhatsApp  ChannelType = "whatsapp"
-	ChannelTypeDiscord   ChannelType = "discord"
-	ChannelTypeMatrix    ChannelType = "matrix"
-	ChannelTypeWebhook   ChannelType = "webhook"
-	ChannelTypeCustom    ChannelType = "custom"
+	ChannelTypeSlack    ChannelType = "slack"
+	ChannelTypeTelegram ChannelType = "telegram"
+	ChannelTypeWhatsApp ChannelType = "whatsapp"
+	ChannelTypeDiscord  ChannelType = "discord"
+	ChannelTypeMatrix   ChannelType = "matrix"
+	ChannelTypeWebhook  ChannelType = "webhook"
+	ChannelTypeCustom   ChannelType = "custom"
 )
 
 // ClawChannelSpec defines the desired state of a ClawChannel.

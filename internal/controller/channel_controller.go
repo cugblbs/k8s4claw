@@ -20,6 +20,7 @@ type ClawChannelReconciler struct {
 // +kubebuilder:rbac:groups=claw.prismer.ai,resources=clawchannels/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=claw.prismer.ai,resources=clawchannels/finalizers,verbs=update
 
+// Reconcile handles a single reconciliation loop for a ClawChannel resource.
 func (r *ClawChannelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var channel clawv1alpha1.ClawChannel
 	if err := r.Get(ctx, req.NamespacedName, &channel); err != nil {
@@ -35,6 +36,7 @@ func (r *ClawChannelReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	return ctrl.Result{}, nil
 }
 
+// SetupWithManager sets up the controller with the Manager.
 func (r *ClawChannelReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&clawv1alpha1.ClawChannel{}).

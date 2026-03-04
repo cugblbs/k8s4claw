@@ -1,8 +1,8 @@
 package v1alpha1
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // ClawSpec defines the desired state of a Claw agent instance.
@@ -50,6 +50,7 @@ type ServiceAccountRef struct {
 // +kubebuilder:validation:Enum=Pending;Provisioning;Running;Degraded;Updating;Failed;Terminating
 type ClawPhase string
 
+// ClawPhase constants.
 const (
 	ClawPhasePending      ClawPhase = "Pending"
 	ClawPhaseProvisioning ClawPhase = "Provisioning"
