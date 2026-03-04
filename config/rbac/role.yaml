@@ -5,7 +5,12 @@ metadata:
 rules:
   # Core resources
   - apiGroups: [""]
-    resources: [pods, services, persistentvolumeclaims, secrets, events, configmaps]
+    resources: [pods, services, persistentvolumeclaims, secrets, events, configmaps, serviceaccounts]
+    verbs: [get, list, watch, create, update, patch, delete]
+
+  # Apps (StatefulSets)
+  - apiGroups: ["apps"]
+    resources: [statefulsets]
     verbs: [get, list, watch, create, update, patch, delete]
 
   # CSI VolumeSnapshots
@@ -15,7 +20,7 @@ rules:
 
   # CRDs
   - apiGroups: ["claw.prismer.ai"]
-    resources: [claws, claws/status, claws/finalizers, clawchannels, clawchannels/status]
+    resources: [claws, claws/status, claws/finalizers, clawchannels, clawchannels/status, clawchannels/finalizers]
     verbs: [get, list, watch, create, update, patch, delete]
 
   # ExternalSecrets (optional, for external-secrets-operator integration)

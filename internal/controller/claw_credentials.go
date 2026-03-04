@@ -20,8 +20,8 @@ func (r *ClawReconciler) injectCredentials(ctx context.Context, claw *clawv1alph
 
 	// Find the runtime container index.
 	runtimeIdx := -1
-	for i, c := range podTemplate.Spec.Containers {
-		if c.Name == "runtime" {
+	for i := range podTemplate.Spec.Containers {
+		if podTemplate.Spec.Containers[i].Name == "runtime" {
 			runtimeIdx = i
 			break
 		}

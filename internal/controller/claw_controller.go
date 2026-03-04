@@ -15,7 +15,9 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	clawv1alpha1 "github.com/Prismer-AI/k8s4claw/api/v1alpha1"
 	clawruntime "github.com/Prismer-AI/k8s4claw/internal/runtime"
@@ -34,7 +36,7 @@ type ClawReconciler struct {
 // +kubebuilder:rbac:groups=claw.prismer.ai,resources=claws,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=claw.prismer.ai,resources=claws/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=claw.prismer.ai,resources=claws/finalizers,verbs=update
-// +kubebuilder:rbac:groups="",resources=pods;services;persistentvolumeclaims;secrets;events;configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods;services;persistentvolumeclaims;secrets;events;configmaps;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 
@@ -317,5 +319,38 @@ func (r *ClawReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.ServiceAccount{}).
+		Watches(&clawv1alpha1.ClawChannel{}, handler.EnqueueRequestsFromMapFunc(r.findClawsForChannel)).
 		Complete(r)
+}
+
+// findClawsForChannel maps a ClawChannel change to all Claw resources that reference it.
+func (r *ClawReconciler) findClawsForChannel(ctx context.Context, obj client.Object) []reconcile.Request {
+	channel, ok := obj.(*clawv1alpha1.ClawChannel)
+	if !ok {
+		return nil
+	}
+
+	var clawList clawv1alpha1.ClawList
+	if err := r.List(ctx, &clawList, client.InNamespace(channel.Namespace)); err != nil {
+		log.FromContext(ctx).Error(err, "failed to list Claws for channel mapping", "channel", channel.Name)
+		return nil
+	}
+
+	var requests []reconcile.Request
+	for i := range clawList.Items {
+		claw := &clawList.Items[i]
+		for _, ch := range claw.Spec.Channels {
+			if ch.Name == channel.Name {
+				requests = append(requests, reconcile.Request{
+					NamespacedName: types.NamespacedName{
+						Name:      claw.Name,
+						Namespace: claw.Namespace,
+					},
+				})
+				break
+			}
+		}
+	}
+
+	return requests
 }
