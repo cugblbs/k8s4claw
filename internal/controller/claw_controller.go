@@ -104,10 +104,16 @@ func (r *ClawReconciler) handleDeletion(ctx context.Context, claw *clawv1alpha1.
 	}
 	logger.Info("handling deletion for Claw", "name", claw.Name, "namespace", claw.Namespace, "reclaimPolicy", reclaimPolicy)
 
-	// TODO: implement reclaim policy logic:
-	// - Delete: remove PVCs
-	// - Archive: snapshot PVCs, then remove
-	// - Retain: leave PVCs in place
+	switch reclaimPolicy {
+	case "Delete":
+		if err := r.deleteClawPVCs(ctx, claw); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to delete PVCs: %w", err)
+		}
+	case "Retain":
+		logger.Info("retaining PVCs per reclaim policy", "name", claw.Name)
+	case "Archive":
+		logger.Info("Archive reclaim policy not yet implemented, retaining PVCs", "name", claw.Name)
+	}
 
 	// Remove the finalizer to allow Kubernetes to delete the resource.
 	patch := client.MergeFrom(claw.DeepCopy())
@@ -118,6 +124,30 @@ func (r *ClawReconciler) handleDeletion(ctx context.Context, claw *clawv1alpha1.
 
 	logger.Info("finalizer removed, deletion proceeding", "name", claw.Name, "namespace", claw.Namespace)
 	return ctrl.Result{}, nil
+}
+
+// deleteClawPVCs deletes all PVCs labeled with the Claw instance name.
+func (r *ClawReconciler) deleteClawPVCs(ctx context.Context, claw *clawv1alpha1.Claw) error {
+	logger := log.FromContext(ctx)
+
+	var pvcList corev1.PersistentVolumeClaimList
+	if err := r.List(ctx, &pvcList,
+		client.InNamespace(claw.Namespace),
+		client.MatchingLabels{"claw.prismer.ai/instance": claw.Name},
+	); err != nil {
+		return fmt.Errorf("failed to list PVCs: %w", err)
+	}
+
+	for i := range pvcList.Items {
+		logger.Info("deleting PVC", "name", pvcList.Items[i].Name, "namespace", pvcList.Items[i].Namespace)
+		if err := r.Delete(ctx, &pvcList.Items[i]); err != nil {
+			if client.IgnoreNotFound(err) != nil {
+				return fmt.Errorf("failed to delete PVC %s: %w", pvcList.Items[i].Name, err)
+			}
+		}
+	}
+
+	return nil
 }
 
 // ensureFinalizer adds the cleanup finalizer if it is not already present.

@@ -8,6 +8,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -768,5 +769,211 @@ func TestClawReconciler_UnknownRuntime(t *testing.T) {
 	}
 	if client.IgnoreNotFound(err) != nil {
 		t.Fatalf("unexpected error checking for StatefulSet: %v", err)
+	}
+}
+
+func TestClawReconciler_PVCReclaimDelete(t *testing.T) {
+	ns := fmt.Sprintf("test-reclaim-del-%d", time.Now().UnixNano())
+	createNamespace(t, ns)
+
+	clawName := "test-claw-reclaim-del"
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      clawName,
+			Namespace: ns,
+		},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Persistence: &clawv1alpha1.PersistenceSpec{
+				ReclaimPolicy: clawv1alpha1.ReclaimDelete,
+				Session: &clawv1alpha1.VolumeSpec{
+					Enabled:   true,
+					Size:      "1Gi",
+					MountPath: "/var/lib/claw/session",
+				},
+			},
+		},
+	}
+
+	if err := k8sClient.Create(ctx, claw); err != nil {
+		t.Fatalf("failed to create Claw: %v", err)
+	}
+
+	// Wait for the finalizer to be added by the reconciler.
+	nn := types.NamespacedName{Name: clawName, Namespace: ns}
+	var latest clawv1alpha1.Claw
+	waitForCondition(t, testTimeout, testInterval, func() (bool, error) {
+		if err := k8sClient.Get(ctx, nn, &latest); err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				return false, nil
+			}
+			return false, err
+		}
+		return controllerutil.ContainsFinalizer(&latest, clawFinalizer), nil
+	})
+
+	// Pre-create a PVC with the claw instance label, mimicking what a StatefulSet would create.
+	pvcName := fmt.Sprintf("session-%s-0", clawName)
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pvcName,
+			Namespace: ns,
+			Labels: map[string]string{
+				"claw.prismer.ai/instance": clawName,
+			},
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse("1Gi"),
+				},
+			},
+		},
+	}
+	if err := k8sClient.Create(ctx, pvc); err != nil {
+		t.Fatalf("failed to create PVC: %v", err)
+	}
+
+	// Wait for the PVC to be visible in the cache before deleting the Claw,
+	// so the reconciler's List call can find it during deletion.
+	waitForCondition(t, testTimeout, testInterval, func() (bool, error) {
+		var pvcList corev1.PersistentVolumeClaimList
+		if err := k8sClient.List(ctx, &pvcList,
+			client.InNamespace(ns),
+			client.MatchingLabels{"claw.prismer.ai/instance": clawName},
+		); err != nil {
+			return false, err
+		}
+		return len(pvcList.Items) > 0, nil
+	})
+
+	// Delete the Claw (re-fetch to get latest resourceVersion).
+	if err := k8sClient.Get(ctx, nn, &latest); err != nil {
+		t.Fatalf("failed to re-fetch Claw: %v", err)
+	}
+	if err := k8sClient.Delete(ctx, &latest); err != nil {
+		t.Fatalf("failed to delete Claw: %v", err)
+	}
+
+	// Wait for the Claw to be fully deleted.
+	waitForCondition(t, testTimeout, testInterval, func() (bool, error) {
+		var fetched clawv1alpha1.Claw
+		err := k8sClient.Get(ctx, nn, &fetched)
+		if err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				return true, nil
+			}
+			return false, err
+		}
+		return false, nil
+	})
+
+	// Verify the PVC was deleted (or is being deleted).
+	// In envtest the kubernetes.io/pvc-protection finalizer controller does not run,
+	// so PVCs may retain a DeletionTimestamp without being fully removed. We accept
+	// either NotFound or DeletionTimestamp being set as proof of deletion.
+	waitForCondition(t, testTimeout, testInterval, func() (bool, error) {
+		var fetchedPVC corev1.PersistentVolumeClaim
+		err := k8sClient.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: ns}, &fetchedPVC)
+		if err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				return true, nil
+			}
+			return false, err
+		}
+		// PVC exists but has a deletion timestamp — the delete was issued.
+		return !fetchedPVC.DeletionTimestamp.IsZero(), nil
+	})
+}
+
+func TestClawReconciler_PVCReclaimRetain(t *testing.T) {
+	ns := fmt.Sprintf("test-reclaim-ret-%d", time.Now().UnixNano())
+	createNamespace(t, ns)
+
+	clawName := "test-claw-reclaim-ret"
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      clawName,
+			Namespace: ns,
+		},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Persistence: &clawv1alpha1.PersistenceSpec{
+				ReclaimPolicy: clawv1alpha1.ReclaimRetain,
+				Session: &clawv1alpha1.VolumeSpec{
+					Enabled:   true,
+					Size:      "1Gi",
+					MountPath: "/var/lib/claw/session",
+				},
+			},
+		},
+	}
+
+	if err := k8sClient.Create(ctx, claw); err != nil {
+		t.Fatalf("failed to create Claw: %v", err)
+	}
+
+	// Wait for the finalizer to be added by the reconciler.
+	nn := types.NamespacedName{Name: clawName, Namespace: ns}
+	var latest clawv1alpha1.Claw
+	waitForCondition(t, testTimeout, testInterval, func() (bool, error) {
+		if err := k8sClient.Get(ctx, nn, &latest); err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				return false, nil
+			}
+			return false, err
+		}
+		return controllerutil.ContainsFinalizer(&latest, clawFinalizer), nil
+	})
+
+	// Pre-create a PVC with the claw instance label.
+	pvcName := fmt.Sprintf("workspace-%s-0", clawName)
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      pvcName,
+			Namespace: ns,
+			Labels: map[string]string{
+				"claw.prismer.ai/instance": clawName,
+			},
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: resource.MustParse("1Gi"),
+				},
+			},
+		},
+	}
+	if err := k8sClient.Create(ctx, pvc); err != nil {
+		t.Fatalf("failed to create PVC: %v", err)
+	}
+
+	// Delete the Claw (re-fetch to get latest resourceVersion).
+	if err := k8sClient.Get(ctx, nn, &latest); err != nil {
+		t.Fatalf("failed to re-fetch Claw: %v", err)
+	}
+	if err := k8sClient.Delete(ctx, &latest); err != nil {
+		t.Fatalf("failed to delete Claw: %v", err)
+	}
+
+	// Wait for the Claw to be fully deleted.
+	waitForCondition(t, testTimeout, testInterval, func() (bool, error) {
+		var fetched clawv1alpha1.Claw
+		err := k8sClient.Get(ctx, nn, &fetched)
+		if err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				return true, nil
+			}
+			return false, err
+		}
+		return false, nil
+	})
+
+	// Verify the PVC still exists (Retain policy should not delete it).
+	var fetchedPVC corev1.PersistentVolumeClaim
+	if err := k8sClient.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: ns}, &fetchedPVC); err != nil {
+		t.Fatalf("expected PVC %q to still exist with Retain policy, but got error: %v", pvcName, err)
 	}
 }

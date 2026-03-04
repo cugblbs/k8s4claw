@@ -339,21 +339,28 @@ func BuildPodTemplate(claw *v1alpha1.Claw, spec *RuntimeSpec) *corev1.PodTemplat
 // BuildVolumeClaimTemplates returns PVC templates for session, output, and
 // workspace when they are configured and enabled. These are intended for use
 // in a StatefulSet's volumeClaimTemplates field.
+//
+// Each template is labeled with "claw.prismer.ai/instance" so that PVCs
+// created by the StatefulSet can be discovered during Claw deletion.
 func BuildVolumeClaimTemplates(claw *v1alpha1.Claw) []corev1.PersistentVolumeClaim {
 	if claw.Spec.Persistence == nil {
 		return nil
 	}
 
+	labels := map[string]string{
+		"claw.prismer.ai/instance": claw.Name,
+	}
+
 	var templates []corev1.PersistentVolumeClaim
 
 	if p := claw.Spec.Persistence.Session; p != nil && p.Enabled {
-		templates = append(templates, pvcTemplate("session", p.Size, p.StorageClass))
+		templates = append(templates, pvcTemplate("session", p.Size, p.StorageClass, labels))
 	}
 	if p := claw.Spec.Persistence.Output; p != nil && p.Enabled {
-		templates = append(templates, pvcTemplate("output", p.Size, p.StorageClass))
+		templates = append(templates, pvcTemplate("output", p.Size, p.StorageClass, labels))
 	}
 	if p := claw.Spec.Persistence.Workspace; p != nil && p.Enabled {
-		templates = append(templates, pvcTemplate("workspace", p.Size, p.StorageClass))
+		templates = append(templates, pvcTemplate("workspace", p.Size, p.StorageClass, labels))
 	}
 
 	if len(templates) == 0 {
@@ -363,10 +370,11 @@ func BuildVolumeClaimTemplates(claw *v1alpha1.Claw) []corev1.PersistentVolumeCla
 }
 
 // pvcTemplate creates a PersistentVolumeClaim for use in volumeClaimTemplates.
-func pvcTemplate(name, size, storageClass string) corev1.PersistentVolumeClaim {
+func pvcTemplate(name, size, storageClass string, labels map[string]string) corev1.PersistentVolumeClaim {
 	pvc := corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
+			Name:   name,
+			Labels: labels,
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},

@@ -816,6 +816,14 @@ func TestBuildVolumeClaimTemplates_WithPersistence(t *testing.T) {
 	if !gotWSSize.Equal(wantWSSize) {
 		t.Errorf("workspace size = %s; want 10Gi", gotWSSize.String())
 	}
+
+	// Verify claw.prismer.ai/instance label is set on all templates.
+	for _, tpl := range templates {
+		got := tpl.Labels["claw.prismer.ai/instance"]
+		if got != claw.Name {
+			t.Errorf("template %q label claw.prismer.ai/instance = %q; want %q", tpl.Name, got, claw.Name)
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
