@@ -231,6 +231,14 @@ func TestClawReconciler_StatefulSetCreated(t *testing.T) {
 		t.Errorf("expected terminationGracePeriodSeconds=40, got %v", sts.Spec.Template.Spec.TerminationGracePeriodSeconds)
 	}
 
+	// Verify init container named "claw-init" exists.
+	if len(sts.Spec.Template.Spec.InitContainers) != 1 {
+		t.Fatalf("expected 1 init container, got %d", len(sts.Spec.Template.Spec.InitContainers))
+	}
+	if sts.Spec.Template.Spec.InitContainers[0].Name != "claw-init" {
+		t.Errorf("expected init container name=claw-init, got %q", sts.Spec.Template.Spec.InitContainers[0].Name)
+	}
+
 	// Verify container named "runtime" exists.
 	var runtimeContainer *corev1.Container
 	for i := range sts.Spec.Template.Spec.Containers {
@@ -243,9 +251,9 @@ func TestClawReconciler_StatefulSetCreated(t *testing.T) {
 		t.Fatal("expected container named 'runtime', not found")
 	}
 
-	// Verify image.
-	if runtimeContainer.Image != "busybox:latest" {
-		t.Errorf("expected image=busybox:latest, got %q", runtimeContainer.Image)
+	// Verify image is the real OpenClaw image (not busybox placeholder).
+	if runtimeContainer.Image != "ghcr.io/prismer-ai/k8s4claw-openclaw:latest" {
+		t.Errorf("expected image=ghcr.io/prismer-ai/k8s4claw-openclaw:latest, got %q", runtimeContainer.Image)
 	}
 
 	// Verify probes are present.
@@ -280,6 +288,29 @@ func TestClawReconciler_StatefulSetCreated(t *testing.T) {
 		if !found {
 			t.Error("expected capabilities.drop to contain ALL")
 		}
+	}
+
+	// Verify base volumes are present.
+	volNames := make(map[string]bool)
+	for _, v := range sts.Spec.Template.Spec.Volumes {
+		volNames[v.Name] = true
+	}
+	for _, expected := range []string{"ipc-socket", "wal-data", "config-vol", "tmp"} {
+		if !volNames[expected] {
+			t.Errorf("missing expected volume %q", expected)
+		}
+	}
+
+	// Verify shared env vars on runtime container.
+	envMap := make(map[string]string)
+	for _, e := range runtimeContainer.Env {
+		envMap[e.Name] = e.Value
+	}
+	if envMap["CLAW_NAME"] != clawName {
+		t.Errorf("expected CLAW_NAME=%q, got %q", clawName, envMap["CLAW_NAME"])
+	}
+	if _, ok := envMap["IPC_SOCKET_PATH"]; !ok {
+		t.Error("expected IPC_SOCKET_PATH env var")
 	}
 }
 
