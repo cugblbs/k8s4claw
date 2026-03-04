@@ -1,0 +1,8 @@
+# Default owners for everything
+* @Prismer-AI/k8s4claw-maintainers
+
+# API types require core reviewer
+/api/ @Prismer-AI/k8s4claw-maintainers
+
+# CI changes require CI reviewer
+/.github/ @Prismer-AI/k8s4claw-maintainers

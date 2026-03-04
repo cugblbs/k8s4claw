@@ -1,0 +1,75 @@
+name: Bug Report
+description: Report a bug in k8s4claw
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the sections below.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component is affected?
+      options:
+        - Operator / Controller
+        - CRD / API Types
+        - IPC Bus
+        - Channel Sidecar
+        - SDK
+        - Helm Chart
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear description of the bug.
+      placeholder: What happened? What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this?
+      placeholder: |
+        1. Apply this CR: ...
+        2. Wait for ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Relevant environment details.
+      placeholder: |
+        - k8s4claw version:
+        - Kubernetes version:
+        - Runtime (openclaw/nanoclaw/zeroclaw):
+        - Cloud provider / platform:
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Paste any relevant log output.
+      render: shell
+
+  - type: checkboxes
+    id: search
+    attributes:
+      label: Search
+      options:
+        - label: I have searched existing issues and this is not a duplicate
+          required: true

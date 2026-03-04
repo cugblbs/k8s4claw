@@ -1,0 +1,54 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - gocritic
+    - gocyclo
+    - gofmt
+    - goimports
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - unused
+    - whitespace
+
+linters-settings:
+  gocyclo:
+    min-complexity: 20
+  gosec:
+    excludes:
+      - G101 # false positives on variable names like "token"
+  revive:
+    rules:
+      - name: exported
+        arguments:
+          - disableStutteringCheck
+  gocritic:
+    enabled-checks:
+      - appendAssign
+      - argOrder
+      - badCall
+      - badCond
+      - dupArg
+      - dupBranchBody
+      - dupCase
+      - dupSubExpr
+      - flagDeref
+      - nilValReturn
+      - rangeValCopy
+      - sloppyLen
+      - typeSwitchVar
+
+issues:
+  exclude-dirs:
+    - vendor
+  max-issues-per-linter: 50
+  max-same-issues: 10

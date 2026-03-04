@@ -1,5 +1,10 @@
 # k8s4claw
 
+[![CI](https://github.com/Prismer-AI/k8s4claw/actions/workflows/ci.yml/badge.svg)](https://github.com/Prismer-AI/k8s4claw/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Prismer-AI/k8s4claw/actions/workflows/codeql.yml/badge.svg)](https://github.com/Prismer-AI/k8s4claw/actions/workflows/codeql.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/Prismer-AI/k8s4claw)](https://goreportcard.com/report/github.com/Prismer-AI/k8s4claw)
+[![License](https://img.shields.io/github/license/Prismer-AI/k8s4claw)](LICENSE)
+
 Kubernetes Operator + Go SDK for managing heterogeneous AI agent runtimes on Kubernetes.
 
 ## Overview
