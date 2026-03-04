@@ -35,8 +35,8 @@ func (a *NanoClawAdapter) runtimeSpec(claw *v1alpha1.Claw) *RuntimeSpec {
 func (a *NanoClawAdapter) HealthProbe(_ *v1alpha1.Claw) *corev1.Probe {
 	return &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{
-			Exec: &corev1.ExecAction{
-				Command: []string{"/bin/sh", "-c", "test -S /var/run/claw/bus.sock"},
+			TCPSocket: &corev1.TCPSocketAction{
+				Port: portIntStr(19000),
 			},
 		},
 		InitialDelaySeconds: 5,
@@ -47,8 +47,8 @@ func (a *NanoClawAdapter) HealthProbe(_ *v1alpha1.Claw) *corev1.Probe {
 func (a *NanoClawAdapter) ReadinessProbe(_ *v1alpha1.Claw) *corev1.Probe {
 	return &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{
-			Exec: &corev1.ExecAction{
-				Command: []string{"/bin/sh", "-c", "test -S /var/run/claw/bus.sock"},
+			TCPSocket: &corev1.TCPSocketAction{
+				Port: portIntStr(19000),
 			},
 		},
 		InitialDelaySeconds: 3,
