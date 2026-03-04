@@ -1,7 +1,7 @@
 # k8s4claw Design Document
 
 **Date:** 2026-03-04
-**Status:** Approved (Rev 4 — post-architectural review)
+**Status:** Approved (Rev 5 — final review fixes)
 **Author:** Prismer-AI Team
 
 ## 1. Overview
@@ -48,11 +48,24 @@ spec:
   # IMMUTABLE after creation. Changing runtime requires delete + recreate.
   runtime: openclaw          # openclaw | nanoclaw | zeroclaw | custom
 
+  # Container image override (optional — defaults to built-in image per runtime, see Section 4.3)
+  # image: ghcr.io/prismer-ai/k8s4claw-openclaw:v1.2.3
+
   # Runtime-specific configuration (runtime.RawExtension — supports nested structures)
   config:
     model: "claude-sonnet-4"
     workspace: "/workspace"
     # Arbitrary runtime-specific config — passed as-is to the runtime container
+
+  # Custom runtime container spec (only for runtime: custom, see Section 4.1)
+  # customRuntime:
+  #   image: my-registry/my-agent:v1
+  #   command: ["/usr/bin/my-agent"]
+  #   ports: [{ name: gateway, containerPort: 8080 }]
+  #   resources: { requests: { cpu: 500m, memory: 1Gi }, limits: { cpu: 2, memory: 4Gi } }
+  #   healthProbe: { httpGet: { path: /health, port: 8080 } }
+  #   readinessProbe: { httpGet: { path: /ready, port: 8080 } }
+  #   gracefulShutdownSeconds: 30
 
   # Credential management (see Section 3.3 for semantics)
   credentials:
@@ -82,20 +95,12 @@ spec:
     shared: [ ... ]
     cache: { ... }
 
-  # Security (see Section 9)
+  # Security (see Section 4.7 for default SecurityContext values, Section 9 for full security model)
+  # security.podSecurityContext and security.containerSecurityContext have hardened defaults
+  # injected by the mutating webhook — only specify here to override defaults.
   security:
-    podSecurityContext:
-      runAsNonRoot: true
-      runAsUser: 1000
-      runAsGroup: 1000
-      fsGroup: 1000
-      seccompProfile:
-        type: RuntimeDefault
-    containerSecurityContext:
-      readOnlyRootFilesystem: true
-      allowPrivilegeEscalation: false
-      capabilities:
-        drop: [ALL]
+    # podSecurityContext: { ... }           # Override pod-level defaults (Section 4.7)
+    # containerSecurityContext: { ... }     # Override container-level defaults (Section 4.7)
     networkPolicy:
       enabled: true                # default: true (default-deny + selective allow)
       allowedEgressCIDRs: []       # additional CIDR ranges
@@ -139,6 +144,12 @@ spec:
       - config
       # - workspaceFiles
       # - envVars
+
+  # ServiceAccount override (see Section 9.3.2)
+  # serviceAccount:
+  #   name: my-custom-sa
+  #   annotations:
+  #     eks.amazonaws.com/role-arn: arn:aws:iam::role/claw-role
 
   # Observability
   observability:
@@ -209,6 +220,18 @@ spec:
   - If no references → remove finalizer, allow deletion
 - **Credential rotation:** When a ClawChannel's `spec.credentials.secretRef` changes, the Operator re-reconciles all Claws referencing that channel (via cross-resource indexer). The Secret hash annotation mechanism triggers rolling updates.
 - **Config changes:** When a ClawChannel spec changes, all referencing Claw Pods are updated (sidecar spec regenerated → StatefulSet rolling update).
+
+**ClawChannel controller reconciliation:** The ClawChannel has its own controller (`channel_controller.go`) responsible for:
+1. **Finalizer management:** Adds `claw.prismer.ai/channel-protection` finalizer on CREATE
+2. **Deletion protection:** On DELETE, queries field index for Claws referencing this channel. If references exist, blocks deletion and sets `InUse=True` condition. If no references, removes finalizer
+3. **Status maintenance:** Updates `status.referenceCount` and `status.referencingClaws[]` on each reconcile
+4. **Credential watches:** When `spec.credentials.secretRef` changes, enqueues all referencing Claws for re-reconciliation (triggers Secret hash update → rolling update)
+
+**Channel mode semantics:** The `mode` field appears in both `Claw.spec.channels[].mode` and `ClawChannel.spec.mode`. The Claw-level mode **restricts** the ClawChannel's capability:
+- `ClawChannel.spec.mode` defines the channel's **capability** (what the sidecar can do)
+- `Claw.spec.channels[].mode` defines the Claw's **usage** of that channel (must be ≤ capability)
+- Example: A `bidirectional` ClawChannel can be referenced as `inbound`-only by a specific Claw
+- The validating webhook (during reconcile) rejects if Claw mode exceeds ClawChannel capability (e.g., Claw requests `bidirectional` but ClawChannel is `inbound`)
 
 ### 3.3 Credential Semantics
 
@@ -298,6 +321,8 @@ type ClawSpec struct {
 
     // +experimental
     Observability *ObservabilitySpec `json:"observability,omitempty"`
+
+    // ... other fields omitted for brevity (see Section 3.1 for full CRD spec)
 }
 ```
 
@@ -655,6 +680,10 @@ ctrl.NewControllerManagedBy(mgr).
     Owns(&networkingv1.NetworkPolicy{}).
     Owns(&networkingv1.Ingress{}).
     Owns(&policyv1.PodDisruptionBudget{}).
+    // Optional CRDs — registered conditionally at startup (skip if CRD not installed)
+    Owns(&monitoringv1.ServiceMonitor{}).
+    Owns(&monitoringv1.PrometheusRule{}).
+    Owns(&snapshotv1.VolumeSnapshot{}).
     Watches(&v1alpha1.ClawChannel{}, handler.EnqueueRequestsFromMapFunc(channelToClawMapper)).
     Watches(&v1alpha1.ClawSelfConfig{}, handler.EnqueueRequestsFromMapFunc(selfConfigToClawMapper)).
     Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(secretToClawMapper),
@@ -663,6 +692,8 @@ ctrl.NewControllerManagedBy(mgr).
 ```
 
 The `secretToClawMapper` uses a field indexer on `spec.credentials.secretRef.name` to efficiently map Secret changes to owning Claws.
+
+**Optional CRD registration:** `ServiceMonitor`, `PrometheusRule`, and `VolumeSnapshot` are optional CRDs. The controller checks for CRD existence at startup (via discovery API) and conditionally registers `Owns()` watches. If the CRD is not installed, the Operator skips creating those resources and logs a warning.
 
 ## 5. IPC Bus + Channel Sidecar
 
@@ -703,6 +734,7 @@ type ClawMessage struct {
 | `stream.tool` | outbound | Tool call event |
 | `stream.error` | outbound | Error during stream |
 | `stream.end` | outbound | Stream complete, contains full content |
+| `delivery_failed` | control | Sidecar reports failed external delivery → Bus enqueues in DLQ (Section 8.4) |
 | `backpressure` | control | Flow control signal |
 | `shutdown` | control | Graceful shutdown notification |
 | `ping` / `pong` | control | Keepalive |
@@ -858,7 +890,7 @@ persistence:
     archive:
       enabled: true
       destination:
-        type: s3
+        type: s3               # S3-compatible only (covers AWS S3, MinIO, GCS S3-interop, R2)
         bucket: prismer-outputs
         prefix: "{{.Namespace}}/{{.Name}}/"
         secretRef:
@@ -1271,6 +1303,20 @@ Even for single-replica deployments, PDB prevents `kubectl drain` from evicting 
 
 ### 10.1 CR Status
 
+**`status.phase` values:**
+
+| Phase | Description |
+|-------|-------------|
+| `Pending` | CR accepted, resources not yet created |
+| `Provisioning` | StatefulSet, PVCs, and sidecars being created |
+| `Running` | Pod ready, runtime healthy, IPC Bus connected |
+| `Degraded` | Pod running but one or more conditions unhealthy (e.g., channel disconnected, storage issue) |
+| `Failed` | Pod crash-looping or unrecoverable error |
+| `Terminating` | Deletion in progress (finalizers running) |
+| `Updating` | Auto-update in progress (Phase 2/3 of update state machine) |
+
+**Channel status values:** `Initializing` | `Connected` | `Reconnecting` | `Disconnected` | `Error`
+
 ```yaml
 status:
   phase: Running
@@ -1288,6 +1334,14 @@ status:
       status: "True"
     - type: WebhookReady
       status: "True"
+    - type: StorageExpanding       # True during PVC auto-expansion
+      status: "False"
+    - type: AutoUpdateAvailable    # True when newer version available
+      status: "False"
+    - type: AutoUpdateCircuitOpen  # True when circuit breaker tripped
+      status: "False"
+  # Auto-update status (see Section 12.4 for full schema)
+  # autoUpdate: { currentVersion: "1.2.3", ... }
   channels:
     - name: slack-team
       status: Connected
@@ -1364,6 +1418,8 @@ Each alert includes:
 - `runbook_url` annotation pointing to `https://docs.prismer.ai/runbooks/{{ $labels.alertname }}`
 - Standard labels: `team`, `service`, `severity`
 
+**ServiceMonitor:** When `spec.observability.metrics: true` (default) and the `ServiceMonitor` CRD is installed in the cluster, the Operator creates a ServiceMonitor per Claw instance targeting the runtime container's metrics port (9191). This enables automatic Prometheus scrape target discovery. If the CRD is not installed, the Operator skips ServiceMonitor creation and logs a warning (metrics are still exposed on the port for manual scrape configuration).
+
 ### 10.4 Grafana Dashboard
 
 When `spec.observability.dashboard.enabled: true`, the Operator deploys Grafana dashboard ConfigMaps (auto-discovered via `grafana_dashboard: "1"` label):
@@ -1427,7 +1483,7 @@ The Operator emits structured Events for key lifecycle transitions:
 ### 11.1 Claw SDK (Infrastructure Integration)
 
 ```go
-import "github.com/Prismer-AI/k8s4claw/sdk"
+import "github.com/prismer-ai/k8s4claw/sdk"
 
 client, err := sdk.NewClient()
 if err != nil {
@@ -1465,7 +1521,7 @@ fmt.Println(result.Content)
 ### 11.2 Channel SDK (Custom Channel Development)
 
 ```go
-import "github.com/Prismer-AI/k8s4claw/sdk/channel"
+import "github.com/prismer-ai/k8s4claw/sdk/channel"
 
 adapter := channel.NewAdapter("feishu", channel.Opts{
     Stream: channel.StreamOpts{
@@ -1780,12 +1836,12 @@ k8s4claw/
 
 | Addition | Section | Rationale |
 |----------|---------|-----------|
-| Pod security context defaults | 4.5 | Defense-in-depth: non-root, read-only rootfs, drop ALL, seccomp |
+| Pod security context defaults | 4.7 | Defense-in-depth: non-root, read-only rootfs, drop ALL, seccomp |
 | NetworkPolicy (default-deny) | 9.2 | Network-level isolation per instance, critical for multi-tenancy |
 | Secret hash annotation rotation | 3.3 | Concrete mechanism for zero-downtime credential rotation |
 | Init container strategy | 4.2 | Config merge, workspace seed, dependency + skill installation |
-| Resource defaults table | 4.3 | Explicit defaults per runtime + sidecar type |
-| ConfigMap management modes | 4.4 | Overwrite / DeepMerge / Passthrough for different runtime models |
+| Resource defaults table | 4.5 | Explicit defaults per runtime + sidecar type |
+| ConfigMap management modes | 4.6 | Overwrite / DeepMerge / Passthrough for different runtime models |
 | Ingress management | 9.5 | External HTTP access for webhook channels |
 | PodDisruptionBudget | 9.6 | Drain protection for stateful agents |
 | Auto-Update + Circuit Breaker | 12 | Automated image updates with safety guarantees |
@@ -1798,6 +1854,8 @@ k8s4claw/
 | Skill installation security | 9.4 | NPM_CONFIG_IGNORE_SCRIPTS for supply chain protection |
 
 ## Appendix C: Architectural Review Fixes (Rev 4)
+
+Note: Issue numbers C3, H3 are intentionally skipped — they were identified during the Rev 1 review (Appendix A) and are not applicable to the Rev 4 architectural review.
 
 | Issue | Severity | Fix |
 |-------|----------|-----|
@@ -1820,3 +1878,23 @@ k8s4claw/
 | M8: Controller watches incomplete | MEDIUM | Added full `SetupWithManager` with all Owns/Watches (Section 4.9) |
 | M9: rclone dependency | MEDIUM | Replaced with CSI snapshot / archive sidecar reuse (Section 12.2) |
 | M10: Runtime image source undefined | MEDIUM | Added Section 4.3 with image table, build strategy, Dockerfile locations |
+
+## Appendix D: Final Review Fixes (Rev 5)
+
+| Issue | Severity | Fix |
+|-------|----------|-----|
+| H1: Appendix B section refs stale | HIGH | Updated 4.5→4.7, 4.3→4.5, 4.4→4.6 (Appendix B) |
+| H2: CRD YAML missing fields | HIGH | Added `spec.image`, `spec.customRuntime`, `spec.serviceAccount` to Section 3.1 |
+| H3: SetupWithManager missing Owns | HIGH | Added ServiceMonitor, PrometheusRule, VolumeSnapshot with conditional CRD note (Section 4.9) |
+| H4: Status conditions incomplete | HIGH | Added StorageExpanding, AutoUpdateAvailable, AutoUpdateCircuitOpen (Section 10.1) |
+| M1: delivery_failed not in type table | MEDIUM | Added to Section 5.3 message types |
+| M2: Channel mode precedence undefined | MEDIUM | Added capability vs usage semantics (Section 3.2) |
+| M3: status.phase not enumerated | MEDIUM | Added formal phase enum table (Section 10.1) |
+| M4: Go module casing mismatch | MEDIUM | Unified to lowercase `github.com/prismer-ai/k8s4claw` |
+| M5: ClawChannel controller undefined | MEDIUM | Added reconciliation responsibilities (Section 3.2) |
+| M6: ServiceMonitor creation undefined | MEDIUM | Documented creation conditions (Section 10.3) |
+| L1: Appendix C numbering gaps | LOW | Added explanatory note (Appendix C) |
+| L2: ClawSpec struct partial | LOW | Added `// ... other fields omitted` comment (Section 3.5) |
+| L3: Repeated security defaults | LOW | Replaced with cross-reference to Section 4.7 (Section 3.1) |
+| L4: Channel status not enumerated | LOW | Added formal enum in Section 10.1 |
+| L5: Archive scope unclear | LOW | Clarified S3-compatible only (Section 7.2) |
