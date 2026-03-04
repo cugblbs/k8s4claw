@@ -552,6 +552,188 @@ func TestClawReconciler_ConfigMapCreated(t *testing.T) {
 	}
 }
 
+func TestClawReconciler_CredentialInjection(t *testing.T) {
+	ns := fmt.Sprintf("test-cred-inject-%d", time.Now().UnixNano())
+	createNamespace(t, ns)
+
+	// Pre-create the Secret that the Claw will reference.
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-claw-creds",
+			Namespace: ns,
+		},
+		Data: map[string][]byte{
+			"OPENAI_API_KEY": []byte("sk-test-key-12345"),
+		},
+	}
+	if err := k8sClient.Create(ctx, secret); err != nil {
+		t.Fatalf("failed to create Secret: %v", err)
+	}
+
+	// Create a Claw with credentials.secretRef.
+	clawName := "test-claw-cred"
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      clawName,
+			Namespace: ns,
+		},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Credentials: &clawv1alpha1.CredentialSpec{
+				SecretRef: &corev1.LocalObjectReference{
+					Name: "test-claw-creds",
+				},
+			},
+		},
+	}
+
+	if err := k8sClient.Create(ctx, claw); err != nil {
+		t.Fatalf("failed to create Claw: %v", err)
+	}
+
+	// Wait for the StatefulSet to appear.
+	var sts appsv1.StatefulSet
+	waitForCondition(t, testTimeout, testInterval, func() (bool, error) {
+		err := k8sClient.Get(ctx, types.NamespacedName{
+			Name:      clawName,
+			Namespace: ns,
+		}, &sts)
+		if err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				return false, nil
+			}
+			return false, err
+		}
+		return true, nil
+	})
+
+	// Find the runtime container.
+	var runtimeContainer *corev1.Container
+	for i := range sts.Spec.Template.Spec.Containers {
+		if sts.Spec.Template.Spec.Containers[i].Name == "runtime" {
+			runtimeContainer = &sts.Spec.Template.Spec.Containers[i]
+			break
+		}
+	}
+	if runtimeContainer == nil {
+		t.Fatal("expected container named 'runtime', not found")
+	}
+
+	// Verify envFrom contains the secret ref.
+	found := false
+	for _, ef := range runtimeContainer.EnvFrom {
+		if ef.SecretRef != nil && ef.SecretRef.Name == "test-claw-creds" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected envFrom with secretRef 'test-claw-creds', not found")
+	}
+
+	// Verify pod template annotation for secret hash.
+	hash, ok := sts.Spec.Template.Annotations["claw.prismer.ai/secret-hash"]
+	if !ok {
+		t.Fatal("expected annotation 'claw.prismer.ai/secret-hash', not found")
+	}
+	if hash == "" {
+		t.Error("expected non-empty secret hash annotation")
+	}
+}
+
+func TestClawReconciler_CredentialKeyMapping(t *testing.T) {
+	ns := fmt.Sprintf("test-cred-keys-%d", time.Now().UnixNano())
+	createNamespace(t, ns)
+
+	// Pre-create a Secret with multiple keys.
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "multi-key-secret",
+			Namespace: ns,
+		},
+		Data: map[string][]byte{
+			"api-key":    []byte("key-value-123"),
+			"api-secret": []byte("secret-value-456"),
+		},
+	}
+	if err := k8sClient.Create(ctx, secret); err != nil {
+		t.Fatalf("failed to create Secret: %v", err)
+	}
+
+	// Create a Claw with credentials.keys (per-key mapping).
+	clawName := "test-claw-keymap"
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      clawName,
+			Namespace: ns,
+		},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Credentials: &clawv1alpha1.CredentialSpec{
+				Keys: []clawv1alpha1.KeyMapping{
+					{
+						Name: "OPENAI_KEY",
+						SecretKeyRef: corev1.SecretKeySelector{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: "multi-key-secret",
+							},
+							Key: "api-key",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := k8sClient.Create(ctx, claw); err != nil {
+		t.Fatalf("failed to create Claw: %v", err)
+	}
+
+	// Wait for the StatefulSet to appear.
+	var sts appsv1.StatefulSet
+	waitForCondition(t, testTimeout, testInterval, func() (bool, error) {
+		err := k8sClient.Get(ctx, types.NamespacedName{
+			Name:      clawName,
+			Namespace: ns,
+		}, &sts)
+		if err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				return false, nil
+			}
+			return false, err
+		}
+		return true, nil
+	})
+
+	// Find the runtime container.
+	var runtimeContainer *corev1.Container
+	for i := range sts.Spec.Template.Spec.Containers {
+		if sts.Spec.Template.Spec.Containers[i].Name == "runtime" {
+			runtimeContainer = &sts.Spec.Template.Spec.Containers[i]
+			break
+		}
+	}
+	if runtimeContainer == nil {
+		t.Fatal("expected container named 'runtime', not found")
+	}
+
+	// Verify env var OPENAI_KEY with valueFrom.secretKeyRef.
+	found := false
+	for _, env := range runtimeContainer.Env {
+		if env.Name == "OPENAI_KEY" &&
+			env.ValueFrom != nil &&
+			env.ValueFrom.SecretKeyRef != nil &&
+			env.ValueFrom.SecretKeyRef.Name == "multi-key-secret" &&
+			env.ValueFrom.SecretKeyRef.Key == "api-key" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("expected env var OPENAI_KEY with secretKeyRef referencing multi-key-secret/api-key, not found")
+	}
+}
+
 func TestClawReconciler_UnknownRuntime(t *testing.T) {
 	ns := fmt.Sprintf("test-sts-unknown-%d", time.Now().UnixNano())
 	createNamespace(t, ns)

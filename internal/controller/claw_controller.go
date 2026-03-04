@@ -246,6 +246,13 @@ func (r *ClawReconciler) buildStatefulSet(ctx context.Context, claw *clawv1alpha
 		}
 	}
 
+	// Inject credentials into the pod template.
+	if claw.Spec.Credentials != nil {
+		if err := r.injectCredentials(ctx, claw, podTemplate); err != nil {
+			return nil, fmt.Errorf("failed to inject credentials: %w", err)
+		}
+	}
+
 	// Apply pod security context.
 	podTemplate.Spec.SecurityContext = &corev1.PodSecurityContext{
 		RunAsNonRoot: ptr.To(true),
