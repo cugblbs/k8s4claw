@@ -59,7 +59,7 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Install setup-envtest
-        run: go install sigs.k8s.io/controller-runtime/tools/setup-envtest@v0.23.1
+        run: go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
       - name: Run tests
         run: |
           export KUBEBUILDER_ASSETS="$(setup-envtest use 1.32.x -p path)"
