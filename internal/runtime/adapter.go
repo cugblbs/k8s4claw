@@ -2,6 +2,8 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
@@ -52,6 +54,19 @@ type RuntimeValidator interface {
 type RuntimeAdapter interface {
 	RuntimeBuilder
 	RuntimeValidator
+}
+
+// DefaultConfigJSON returns the adapter's default config as a JSON string.
+func DefaultConfigJSON(adapter RuntimeAdapter) (string, error) {
+	cfg := adapter.DefaultConfig()
+	if cfg == nil {
+		return "{}", nil
+	}
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal default config: %w", err)
+	}
+	return string(data), nil
 }
 
 // Registry maps runtime types to their adapters.

@@ -65,6 +65,11 @@ func (r *ClawReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, fmt.Errorf("failed to ensure Service: %w", err)
 	}
 
+	// Ensure ConfigMap exists.
+	if err := r.ensureConfigMap(ctx, &claw, adapter); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to ensure ConfigMap: %w", err)
+	}
+
 	// Ensure StatefulSet exists and is up to date.
 	if err := r.ensureStatefulSet(ctx, &claw, adapter); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to ensure StatefulSet: %w", err)

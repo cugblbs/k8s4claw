@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -472,6 +473,82 @@ func TestClawReconciler_ServiceCreated(t *testing.T) {
 		if got := svc.Labels[k]; got != v {
 			t.Errorf("Service label %q: expected %q, got %q", k, v, got)
 		}
+	}
+}
+
+func TestClawReconciler_ConfigMapCreated(t *testing.T) {
+	ns := fmt.Sprintf("test-cm-create-%d", time.Now().UnixNano())
+	createNamespace(t, ns)
+
+	clawName := "test-claw-cm"
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      clawName,
+			Namespace: ns,
+		},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeNanoClaw,
+		},
+	}
+
+	if err := k8sClient.Create(ctx, claw); err != nil {
+		t.Fatalf("failed to create Claw: %v", err)
+	}
+
+	// Wait for the ConfigMap to appear.
+	cmName := fmt.Sprintf("%s-config", clawName)
+	var cm corev1.ConfigMap
+	waitForCondition(t, testTimeout, testInterval, func() (bool, error) {
+		err := k8sClient.Get(ctx, types.NamespacedName{
+			Name:      cmName,
+			Namespace: ns,
+		}, &cm)
+		if err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				return false, nil
+			}
+			return false, err
+		}
+		return true, nil
+	})
+
+	// Verify ownerReferences (kind=Claw).
+	if len(cm.OwnerReferences) != 1 {
+		t.Fatalf("expected 1 ownerReference, got %d", len(cm.OwnerReferences))
+	}
+	if cm.OwnerReferences[0].Kind != "Claw" {
+		t.Errorf("expected ownerReference kind=Claw, got %q", cm.OwnerReferences[0].Kind)
+	}
+
+	// Verify labels.
+	expectedLabels := map[string]string{
+		"app.kubernetes.io/name":     "claw",
+		"app.kubernetes.io/instance": clawName,
+	}
+	for k, v := range expectedLabels {
+		if got := cm.Labels[k]; got != v {
+			t.Errorf("ConfigMap label %q: expected %q, got %q", k, v, got)
+		}
+	}
+
+	// Verify config.json key exists in ConfigMap data.
+	configJSON, ok := cm.Data["config.json"]
+	if !ok {
+		t.Fatal("expected config.json key in ConfigMap data, not found")
+	}
+	if configJSON == "" {
+		t.Fatal("expected non-empty config.json value")
+	}
+
+	// Verify the config.json is valid JSON and contains expected NanoClaw defaults.
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(configJSON), &parsed); err != nil {
+		t.Fatalf("config.json is not valid JSON: %v", err)
+	}
+	if port, ok := parsed["gatewayPort"]; !ok {
+		t.Error("expected gatewayPort in config.json")
+	} else if int(port.(float64)) != 19000 {
+		t.Errorf("expected gatewayPort=19000, got %v", port)
 	}
 }
 
