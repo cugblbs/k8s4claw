@@ -55,6 +55,8 @@ type RuntimeAdapter interface {
 }
 
 // Registry maps runtime types to their adapters.
+// It is NOT safe for concurrent use. All Register calls must complete
+// before any concurrent Get calls.
 type Registry struct {
 	adapters map[v1alpha1.RuntimeType]RuntimeAdapter
 }

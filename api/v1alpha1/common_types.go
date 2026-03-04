@@ -3,13 +3,14 @@ package v1alpha1
 import corev1 "k8s.io/api/core/v1"
 
 // RuntimeType defines the type of Claw runtime.
-// +kubebuilder:validation:Enum=openclaw;nanoclaw;zeroclaw;custom
+// +kubebuilder:validation:Enum=openclaw;nanoclaw;zeroclaw;picoclaw;custom
 type RuntimeType string
 
 const (
 	RuntimeOpenClaw RuntimeType = "openclaw"
 	RuntimeNanoClaw RuntimeType = "nanoclaw"
 	RuntimeZeroClaw RuntimeType = "zeroclaw"
+	RuntimePicoClaw RuntimeType = "picoclaw"
 	RuntimeCustom   RuntimeType = "custom"
 )
 

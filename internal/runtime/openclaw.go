@@ -24,7 +24,7 @@ func (a *OpenClawAdapter) HealthProbe(_ *v1alpha1.Claw) *corev1.Probe {
 		ProbeHandler: corev1.ProbeHandler{
 			HTTPGet: &corev1.HTTPGetAction{
 				Path: "/health",
-				Port: intstr18900(),
+				Port: portIntStr(18900),
 			},
 		},
 		InitialDelaySeconds: 10,
@@ -37,7 +37,7 @@ func (a *OpenClawAdapter) ReadinessProbe(_ *v1alpha1.Claw) *corev1.Probe {
 		ProbeHandler: corev1.ProbeHandler{
 			HTTPGet: &corev1.HTTPGetAction{
 				Path: "/ready",
-				Port: intstr18900(),
+				Port: portIntStr(18900),
 			},
 		},
 		InitialDelaySeconds: 5,

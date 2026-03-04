@@ -24,7 +24,7 @@ func (a *ZeroClawAdapter) HealthProbe(_ *v1alpha1.Claw) *corev1.Probe {
 		ProbeHandler: corev1.ProbeHandler{
 			HTTPGet: &corev1.HTTPGetAction{
 				Path: "/health",
-				Port: intstr3000(),
+				Port: portIntStr(3000),
 			},
 		},
 		InitialDelaySeconds: 3,
@@ -37,7 +37,7 @@ func (a *ZeroClawAdapter) ReadinessProbe(_ *v1alpha1.Claw) *corev1.Probe {
 		ProbeHandler: corev1.ProbeHandler{
 			HTTPGet: &corev1.HTTPGetAction{
 				Path: "/ready",
-				Port: intstr3000(),
+				Port: portIntStr(3000),
 			},
 		},
 		InitialDelaySeconds: 1,
