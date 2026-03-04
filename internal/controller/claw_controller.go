@@ -75,8 +75,7 @@ func (r *ClawReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 
 	// TODO: implement remaining reconciliation phases:
-	// 2. Ensure PVCs exist
-	// 3. Resolve ClawChannel references -> build sidecar specs
+	// - Ensure PVCs exist
 
 	return ctrl.Result{}, nil
 }
@@ -133,13 +132,16 @@ func (r *ClawReconciler) ensureFinalizer(ctx context.Context, claw *clawv1alpha1
 func (r *ClawReconciler) ensureStatefulSet(ctx context.Context, claw *clawv1alpha1.Claw, adapter clawruntime.RuntimeAdapter) error {
 	logger := log.FromContext(ctx)
 
-	desired := r.buildStatefulSet(claw, adapter)
+	desired, err := r.buildStatefulSet(ctx, claw, adapter)
+	if err != nil {
+		return fmt.Errorf("failed to build StatefulSet: %w", err)
+	}
 	if err := controllerutil.SetControllerReference(claw, desired, r.Scheme); err != nil {
 		return fmt.Errorf("failed to set controller reference on StatefulSet: %w", err)
 	}
 
 	var existing appsv1.StatefulSet
-	err := r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, &existing)
+	err = r.Get(ctx, types.NamespacedName{Name: desired.Name, Namespace: desired.Namespace}, &existing)
 	if apierrors.IsNotFound(err) {
 		logger.Info("creating StatefulSet", "name", desired.Name, "namespace", desired.Namespace)
 		if err := r.Create(ctx, desired); err != nil {
@@ -206,7 +208,9 @@ func (r *ClawReconciler) updateStatus(ctx context.Context, claw *clawv1alpha1.Cl
 }
 
 // buildStatefulSet constructs the desired StatefulSet for the given Claw and adapter.
-func (r *ClawReconciler) buildStatefulSet(claw *clawv1alpha1.Claw, adapter clawruntime.RuntimeAdapter) *appsv1.StatefulSet {
+func (r *ClawReconciler) buildStatefulSet(ctx context.Context, claw *clawv1alpha1.Claw, adapter clawruntime.RuntimeAdapter) (*appsv1.StatefulSet, error) {
+	logger := log.FromContext(ctx)
+
 	labels := map[string]string{
 		"app.kubernetes.io/name":     "claw",
 		"app.kubernetes.io/instance": claw.Name,
@@ -224,6 +228,17 @@ func (r *ClawReconciler) buildStatefulSet(claw *clawv1alpha1.Claw, adapter clawr
 	}
 	for k, v := range labels {
 		podTemplate.Labels[k] = v
+	}
+
+	// Inject channel sidecars.
+	if len(claw.Spec.Channels) > 0 {
+		skipped, err := r.injectChannelSidecars(ctx, claw, podTemplate)
+		if err != nil {
+			return nil, fmt.Errorf("failed to inject channel sidecars: %w", err)
+		}
+		if len(skipped) > 0 {
+			logger.Info("skipped channels during sidecar injection", "skipped", skipped)
+		}
 	}
 
 	// Apply pod security context.
@@ -252,7 +267,7 @@ func (r *ClawReconciler) buildStatefulSet(claw *clawv1alpha1.Claw, adapter clawr
 			Template:             *podTemplate,
 			VolumeClaimTemplates: clawruntime.BuildVolumeClaimTemplates(claw),
 		},
-	}
+	}, nil
 }
 
 func (r *ClawReconciler) SetupWithManager(mgr ctrl.Manager) error {

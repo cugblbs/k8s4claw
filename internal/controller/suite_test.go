@@ -69,9 +69,10 @@ func TestMain(m *testing.M) {
 
 	// Set up the ClawReconciler.
 	if err := (&ClawReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Registry: registry,
+		Client:                mgr.GetClient(),
+		Scheme:                mgr.GetScheme(),
+		Registry:              registry,
+		NativeSidecarsEnabled: true,
 	}).SetupWithManager(mgr); err != nil {
 		panic("failed to set up ClawReconciler: " + err.Error())
 	}
