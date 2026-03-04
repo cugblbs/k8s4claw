@@ -232,8 +232,8 @@ spec:
                                 type: object
                                 x-kubernetes-map-type: atomic
                               type:
-                                description: Type is the storage backend (s3, gcs,
-                                  minio).
+                                description: Type is the S3-compatible storage backend
+                                  (s3, minio, gcs-s3-interop, r2).
                                 type: string
                             required:
                             - bucket
@@ -464,6 +464,12 @@ spec:
               serviceAccount:
                 description: ServiceAccount overrides the default restricted ServiceAccount.
                 properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: Annotations to apply to the ServiceAccount (e.g.,
+                      for IRSA or Workload Identity).
+                    type: object
                   name:
                     description: Name of a user-managed ServiceAccount.
                     type: string

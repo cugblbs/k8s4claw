@@ -67,11 +67,11 @@ func allAdapterTests() []adapterTestCase {
 			wantShutdown:  15,
 
 			wantHealth: probeExpectation{
-				probeType: "exec", cmd: "test -S /var/run/claw/bus.sock",
+				probeType: "tcp", port: 19000,
 				initialDelay: 5, period: 10,
 			},
 			wantReady: probeExpectation{
-				probeType: "exec", cmd: "test -S /var/run/claw/bus.sock",
+				probeType: "tcp", port: 19000,
 				initialDelay: 3, period: 5,
 			},
 		},

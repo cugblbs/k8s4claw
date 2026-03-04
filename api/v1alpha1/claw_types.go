@@ -40,6 +40,10 @@ type ClawSpec struct {
 type ServiceAccountRef struct {
 	// Name of a user-managed ServiceAccount.
 	Name string `json:"name"`
+
+	// Annotations to apply to the ServiceAccount (e.g., for IRSA or Workload Identity).
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 // ClawPhase represents the current lifecycle phase.

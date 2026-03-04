@@ -1510,7 +1510,7 @@ The Operator emits structured Events for key lifecycle transitions:
 ### 11.1 Claw SDK (Infrastructure Integration)
 
 ```go
-import "github.com/prismer-ai/k8s4claw/sdk"
+import "github.com/Prismer-AI/k8s4claw/sdk"
 
 ctx := context.Background()
 
@@ -1550,7 +1550,7 @@ fmt.Println(result.Content)
 ### 11.2 Channel SDK (Custom Channel Development)
 
 ```go
-import "github.com/prismer-ai/k8s4claw/sdk/channel"
+import "github.com/Prismer-AI/k8s4claw/sdk/channel"
 
 feishu := lark.NewClient() // hypothetical Feishu/Lark API client
 
@@ -1924,7 +1924,7 @@ Note: Issue numbers C3, H3 are intentionally skipped — they were identified du
 | M1: delivery_failed not in type table | MEDIUM | Added to Section 5.3 message types |
 | M2: Channel mode precedence undefined | MEDIUM | Added capability vs usage semantics (Section 3.2) |
 | M3: status.phase not enumerated | MEDIUM | Added formal phase enum table (Section 10.1) |
-| M4: Go module casing mismatch | MEDIUM | Unified to lowercase `github.com/prismer-ai/k8s4claw` |
+| M4: Go module casing mismatch | MEDIUM | Matches GitHub URL: `github.com/Prismer-AI/k8s4claw` |
 | M5: ClawChannel controller undefined | MEDIUM | Added reconciliation responsibilities (Section 3.2) |
 | M6: ServiceMonitor creation undefined | MEDIUM | Documented creation conditions (Section 10.3) |
 | L1: Appendix C numbering gaps | LOW | Added explanatory note (Appendix C) |

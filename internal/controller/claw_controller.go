@@ -211,6 +211,7 @@ func (r *ClawReconciler) buildStatefulSet(claw *clawv1alpha1.Claw, adapter clawr
 		"app.kubernetes.io/name":     "claw",
 		"app.kubernetes.io/instance": claw.Name,
 		"claw.prismer.ai/runtime":    string(claw.Spec.Runtime),
+		"claw.prismer.ai/instance":   claw.Name,
 	}
 
 	replicas := int32(1)
@@ -258,5 +259,9 @@ func (r *ClawReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&clawv1alpha1.Claw{}).
 		Owns(&appsv1.StatefulSet{}).
+		Owns(&corev1.Service{}).
+		Owns(&corev1.PersistentVolumeClaim{}).
+		Owns(&corev1.ConfigMap{}).
+		Owns(&corev1.ServiceAccount{}).
 		Complete(r)
 }

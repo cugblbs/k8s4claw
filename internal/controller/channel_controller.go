@@ -18,6 +18,7 @@ type ClawChannelReconciler struct {
 
 // +kubebuilder:rbac:groups=claw.prismer.ai,resources=clawchannels,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=claw.prismer.ai,resources=clawchannels/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=claw.prismer.ai,resources=clawchannels/finalizers,verbs=update
 
 func (r *ClawChannelReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var channel clawv1alpha1.ClawChannel

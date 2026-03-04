@@ -183,7 +183,7 @@ type ArchiveSpec struct {
 
 // ArchiveDestination specifies the target object storage.
 type ArchiveDestination struct {
-	// Type is the storage backend (s3, gcs, minio).
+	// Type is the S3-compatible storage backend (s3, minio, gcs-s3-interop, r2).
 	Type string `json:"type"`
 
 	// Bucket name.

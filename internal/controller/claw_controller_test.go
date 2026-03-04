@@ -189,6 +189,7 @@ func TestClawReconciler_StatefulSetCreated(t *testing.T) {
 		"app.kubernetes.io/name":     "claw",
 		"app.kubernetes.io/instance": clawName,
 		"claw.prismer.ai/runtime":    "openclaw",
+		"claw.prismer.ai/instance":   clawName,
 	}
 	for k, v := range expectedLabels {
 		if got := sts.Labels[k]; got != v {
