@@ -7,6 +7,7 @@ const (
 	OpenClaw RuntimeType = "openclaw"
 	NanoClaw RuntimeType = "nanoclaw"
 	ZeroClaw RuntimeType = "zeroclaw"
+	PicoClaw RuntimeType = "picoclaw"
 	Custom   RuntimeType = "custom"
 )
 

@@ -10,7 +10,7 @@ k8s4claw is a Kubernetes Operator + Go SDK for managing heterogeneous AI agent r
 
 ### Goals
 
-1. **Unified lifecycle** — Manage OpenClaw, NanoClaw, ZeroClaw (and custom runtimes) through a single K8s Operator
+1. **Unified lifecycle** — Manage OpenClaw, NanoClaw, ZeroClaw, PicoClaw (and custom runtimes) through a single K8s Operator
 2. **Simple SDK** — Enable quick infrastructure integration with minimal code
 3. **Persistence** — Durable session state, output archival, shared storage
 4. **Observability** — Metrics, logs, status conditions, K8s Events
@@ -24,16 +24,16 @@ k8s4claw is a Kubernetes Operator + Go SDK for managing heterogeneous AI agent r
 
 ## 2. Runtime Comparison
 
-| | OpenClaw | NanoClaw | ZeroClaw |
-|---|---|---|---|
-| **Language** | TypeScript/Node.js | TypeScript/Node.js | 100% Rust |
-| **Purpose** | Full-featured AI assistant platform | Lightweight secure personal assistant | High-performance agent runtime |
-| **Memory** | >1GB | ~200MB | <5MB |
-| **Startup** | >500ms | ~100ms | <10ms |
-| **Isolation** | App-level permissions | Docker container sandbox | WASM/Landlock/Bubblewrap |
-| **Channels** | 25+ built-in | On-demand (Skills) | Pluggable (Matrix/Discord/Lark...) |
-| **Gateway Port** | 18900 | 19000 (via UDS wrapper) | 3000 |
-| **Extension** | Plugins + Skills | Claude Code Skills | WASM plugin engine |
+| | OpenClaw | NanoClaw | ZeroClaw | PicoClaw |
+|---|---|---|---|---|
+| **Language** | TypeScript/Node.js | TypeScript/Node.js | 100% Rust | Rust/WASM |
+| **Purpose** | Full-featured AI assistant platform | Lightweight secure personal assistant | High-performance agent runtime | Ultra-lightweight serverless/edge runtime |
+| **Memory** | >1GB | ~200MB | <5MB | <1MB |
+| **Startup** | >500ms | ~100ms | <10ms | <5ms |
+| **Isolation** | App-level permissions | Docker container sandbox | WASM/Landlock/Bubblewrap | WASM sandbox |
+| **Channels** | 25+ built-in | On-demand (Skills) | Pluggable (Matrix/Discord/Lark...) | Minimal (webhook) |
+| **Gateway Port** | 18900 | 19000 (via UDS wrapper) | 3000 | 8080 |
+| **Extension** | Plugins + Skills | Claude Code Skills | WASM plugin engine | WASM modules |
 
 ## 3. CRD Design
 
@@ -46,7 +46,7 @@ metadata:
   name: my-research-agent
 spec:
   # IMMUTABLE after creation. Changing runtime requires delete + recreate.
-  runtime: openclaw          # openclaw | nanoclaw | zeroclaw | custom
+  runtime: openclaw          # openclaw | nanoclaw | zeroclaw | picoclaw | custom
 
   # Container image override (optional — defaults to built-in image per runtime, see Section 4.3)
   # image: ghcr.io/prismer-ai/k8s4claw-openclaw:v1.2.3
@@ -539,6 +539,7 @@ Each built-in runtime uses a **k8s4claw-specific container image** that embeds t
 | OpenClaw | `ghcr.io/prismer-ai/k8s4claw-openclaw` | GHCR | `latest` (auto-update resolves semver) |
 | NanoClaw | `ghcr.io/prismer-ai/k8s4claw-nanoclaw` | GHCR | `latest` |
 | ZeroClaw | `ghcr.io/prismer-ai/k8s4claw-zeroclaw` | GHCR | `latest` |
+| PicoClaw | `ghcr.io/prismer-ai/k8s4claw-picoclaw` | GHCR | `latest` |
 | Custom | User-specified | User registry | User-specified |
 
 **Image build strategy:** Each k8s4claw runtime image is built via multi-stage Dockerfile:
@@ -575,6 +576,7 @@ Each container has sensible defaults. Users can override via CRD spec.
 | **OpenClaw runtime** | 500m | 1Gi | 2000m | 4Gi |
 | **NanoClaw runtime** | 100m | 256Mi | 500m | 512Mi |
 | **ZeroClaw runtime** | 50m | 32Mi | 200m | 128Mi |
+| **PicoClaw runtime** | 25m | 16Mi | 100m | 64Mi |
 | **IPC Bus** (co-process) | — | — | — | — |
 | **Channel sidecar** (default) | 50m | 64Mi | 200m | 128Mi |
 | **Archive sidecar** | 50m | 64Mi | 200m | 128Mi |
@@ -640,6 +642,7 @@ Each runtime defines `GracefulShutdownSeconds()` via the `RuntimeBuilder` interf
 | OpenClaw | 30s | Large session state to flush |
 | NanoClaw | 15s | Moderate state |
 | ZeroClaw | 5s | Minimal state, fast shutdown |
+| PicoClaw | 2s | Stateless/near-stateless, instant shutdown |
 
 **Shutdown sequence:**
 
@@ -1694,6 +1697,7 @@ k8s4claw/
 │   │   ├── openclaw.go
 │   │   ├── nanoclaw.go
 │   │   ├── zeroclaw.go
+│   │   ├── picoclaw.go
 │   │   └── custom.go
 │   ├── channel/               # ChannelAdapter implementations
 │   │   ├── adapter.go
@@ -1719,6 +1723,7 @@ k8s4claw/
 │   │   ├── bridge_openclaw.go
 │   │   ├── bridge_nanoclaw.go # UDS wrapper bridge
 │   │   ├── bridge_zeroclaw.go
+│   │   ├── bridge_picoclaw.go
 │   │   ├── flow_control.go
 │   │   ├── stream_tracker.go
 │   │   ├── recovery.go
@@ -1805,7 +1810,7 @@ k8s4claw/
 
 ### Phase 2 — Communication
 - IPC Bus co-process binary
-- RuntimeBridge implementations (OpenClaw WS, NanoClaw UDS wrapper, ZeroClaw SSE)
+- RuntimeBridge implementations (OpenClaw WS, NanoClaw UDS wrapper, ZeroClaw SSE, PicoClaw TCP)
 - Standard message protocol + streaming (with CorrelationID/ReplyTo)
 - Channel SDK with Bus-down buffering
 - Built-in Slack + Webhook sidecars with configurable resources
