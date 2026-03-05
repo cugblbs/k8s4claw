@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -49,6 +50,12 @@ type ClawReconciler struct {
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 
 func (r *ClawReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	start := time.Now()
+	result := "success"
+	defer func() {
+		RecordReconcile(req.Namespace, result, time.Since(start))
+	}()
+
 	var claw clawv1alpha1.Claw
 	if err := r.Get(ctx, req.NamespacedName, &claw); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -57,6 +64,7 @@ func (r *ClawReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	// Resolve runtime adapter.
 	adapter, ok := r.Registry.Get(claw.Spec.Runtime)
 	if !ok {
+		result = "error"
 		return ctrl.Result{}, fmt.Errorf("unsupported runtime type: %s", claw.Spec.Runtime)
 	}
 
@@ -297,6 +305,10 @@ func (r *ClawReconciler) updateStatus(ctx context.Context, claw *clawv1alpha1.Cl
 
 	claw.Status.Phase = phase
 	claw.Status.ObservedGeneration = claw.Generation
+
+	// Record metrics for phase and readiness.
+	SetInstancePhase(claw.Namespace, claw.Name, string(phase))
+	SetInstanceReady(claw.Namespace, claw.Name, runtimeReady)
 
 	// Set RuntimeReady condition.
 	condition := metav1.Condition{
