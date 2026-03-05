@@ -3354,6 +3354,203 @@ func TestNeedsRBAC_CurrentlyAlwaysFalse(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Unit tests: buildNetworkPolicy
+// ---------------------------------------------------------------------------
+
+func TestBuildNetworkPolicy(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "prod"},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Security: &clawv1alpha1.SecuritySpec{
+				NetworkPolicy: &clawv1alpha1.NetworkPolicySpec{
+					Enabled: true,
+				},
+			},
+		},
+	}
+	np := buildNetworkPolicy(claw, 18900)
+
+	if np.Name != "my-agent-netpol" {
+		t.Errorf("expected name my-agent-netpol, got %s", np.Name)
+	}
+	if np.Namespace != "prod" {
+		t.Errorf("expected namespace prod, got %s", np.Namespace)
+	}
+
+	// Verify podSelector uses claw.prismer.ai/instance label.
+	if np.Spec.PodSelector.MatchLabels["claw.prismer.ai/instance"] != "my-agent" {
+		t.Error("expected podSelector to use claw.prismer.ai/instance label")
+	}
+
+	// Verify policyTypes.
+	if len(np.Spec.PolicyTypes) != 2 {
+		t.Fatalf("expected 2 policy types, got %d", len(np.Spec.PolicyTypes))
+	}
+
+	// Verify DNS egress (port 53 UDP+TCP).
+	if len(np.Spec.Egress) < 2 {
+		t.Fatalf("expected at least 2 egress rules, got %d", len(np.Spec.Egress))
+	}
+	dnsRule := np.Spec.Egress[0]
+	if len(dnsRule.Ports) != 2 {
+		t.Errorf("expected 2 DNS ports (UDP+TCP), got %d", len(dnsRule.Ports))
+	}
+
+	// Verify HTTPS egress (port 443 TCP).
+	httpsRule := np.Spec.Egress[1]
+	if len(httpsRule.Ports) != 1 || httpsRule.Ports[0].Port.IntValue() != 443 {
+		t.Error("expected HTTPS egress on port 443")
+	}
+
+	// Verify same-namespace ingress.
+	if len(np.Spec.Ingress) < 1 {
+		t.Fatal("expected at least 1 ingress rule")
+	}
+	ingressRule := np.Spec.Ingress[0]
+	if len(ingressRule.From) != 1 {
+		t.Fatalf("expected 1 ingress peer, got %d", len(ingressRule.From))
+	}
+	if ingressRule.From[0].PodSelector == nil {
+		t.Error("expected podSelector peer for same-namespace ingress")
+	}
+	if len(ingressRule.Ports) != 1 || ingressRule.Ports[0].Port.IntValue() != 18900 {
+		t.Error("expected ingress on gateway port 18900")
+	}
+}
+
+func TestBuildNetworkPolicy_WithCustomEgress(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "prod"},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Security: &clawv1alpha1.SecuritySpec{
+				NetworkPolicy: &clawv1alpha1.NetworkPolicySpec{
+					Enabled:            true,
+					AllowedEgressCIDRs: []string{"10.0.0.0/8", "172.16.0.0/12"},
+				},
+			},
+		},
+	}
+	np := buildNetworkPolicy(claw, 18900)
+
+	// DNS + HTTPS + 2 custom CIDRs = 4 egress rules.
+	if len(np.Spec.Egress) != 4 {
+		t.Errorf("expected 4 egress rules, got %d", len(np.Spec.Egress))
+	}
+	// Check first custom CIDR.
+	if np.Spec.Egress[2].To[0].IPBlock.CIDR != "10.0.0.0/8" {
+		t.Errorf("expected CIDR 10.0.0.0/8, got %s", np.Spec.Egress[2].To[0].IPBlock.CIDR)
+	}
+}
+
+func TestBuildNetworkPolicy_WithCrossNamespaceIngress(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "prod"},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Security: &clawv1alpha1.SecuritySpec{
+				NetworkPolicy: &clawv1alpha1.NetworkPolicySpec{
+					Enabled:                  true,
+					AllowedIngressNamespaces: []string{"monitoring"},
+				},
+			},
+		},
+	}
+	np := buildNetworkPolicy(claw, 18900)
+
+	// Same-namespace + monitoring = 2 ingress rules.
+	if len(np.Spec.Ingress) != 2 {
+		t.Errorf("expected 2 ingress rules, got %d", len(np.Spec.Ingress))
+	}
+	nsSelector := np.Spec.Ingress[1].From[0].NamespaceSelector
+	if nsSelector == nil {
+		t.Fatal("expected namespace selector for cross-namespace rule")
+	}
+	if nsSelector.MatchLabels["kubernetes.io/metadata.name"] != "monitoring" {
+		t.Error("expected namespace selector for monitoring")
+	}
+}
+
+func TestBuildNetworkPolicy_WithIngressEnabled(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "prod"},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Security: &clawv1alpha1.SecuritySpec{
+				NetworkPolicy: &clawv1alpha1.NetworkPolicySpec{
+					Enabled: true,
+				},
+			},
+			Ingress: &clawv1alpha1.IngressSpec{
+				Enabled: true,
+				Host:    "agent.example.com",
+			},
+		},
+	}
+	np := buildNetworkPolicy(claw, 18900)
+
+	// Same-namespace + ingress-controller = 2 ingress rules.
+	if len(np.Spec.Ingress) != 2 {
+		t.Errorf("expected 2 ingress rules, got %d", len(np.Spec.Ingress))
+	}
+	ingressCtrl := np.Spec.Ingress[1]
+	if ingressCtrl.From[0].NamespaceSelector.MatchLabels["kubernetes.io/metadata.name"] != "ingress-nginx" {
+		t.Error("expected ingress-nginx namespace selector")
+	}
+}
+
+func TestNetworkPolicyEnabled(t *testing.T) {
+	tests := []struct {
+		name string
+		claw *clawv1alpha1.Claw
+		want bool
+	}{
+		{
+			name: "nil security",
+			claw: &clawv1alpha1.Claw{},
+			want: false,
+		},
+		{
+			name: "nil networkPolicy",
+			claw: &clawv1alpha1.Claw{
+				Spec: clawv1alpha1.ClawSpec{Security: &clawv1alpha1.SecuritySpec{}},
+			},
+			want: false,
+		},
+		{
+			name: "disabled",
+			claw: &clawv1alpha1.Claw{
+				Spec: clawv1alpha1.ClawSpec{
+					Security: &clawv1alpha1.SecuritySpec{
+						NetworkPolicy: &clawv1alpha1.NetworkPolicySpec{Enabled: false},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "enabled",
+			claw: &clawv1alpha1.Claw{
+				Spec: clawv1alpha1.ClawSpec{
+					Security: &clawv1alpha1.SecuritySpec{
+						NetworkPolicy: &clawv1alpha1.NetworkPolicySpec{Enabled: true},
+					},
+				},
+			},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := networkPolicyEnabled(tt.claw); got != tt.want {
+				t.Errorf("networkPolicyEnabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func containsSubstring(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
 }

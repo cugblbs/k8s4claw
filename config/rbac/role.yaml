@@ -18,6 +18,11 @@ rules:
     resources: [volumesnapshots]
     verbs: [get, list, watch, create, delete]
 
+  # Networking (NetworkPolicy + Ingress)
+  - apiGroups: ["networking.k8s.io"]
+    resources: [networkpolicies, ingresses]
+    verbs: [get, list, watch, create, update, patch, delete]
+
   # RBAC (per-instance Role + RoleBinding for selfConfigure)
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: [roles, rolebindings]
