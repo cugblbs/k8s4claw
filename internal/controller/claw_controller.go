@@ -95,6 +95,11 @@ func (r *ClawReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, fmt.Errorf("failed to ensure NetworkPolicy: %w", err)
 	}
 
+	// Ensure Ingress for external HTTP access.
+	if err := r.ensureIngress(ctx, &claw, gatewayPort); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to ensure Ingress: %w", err)
+	}
+
 	// Ensure StatefulSet exists and is up to date.
 	if err := r.ensureStatefulSet(ctx, &claw, adapter); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to ensure StatefulSet: %w", err)
@@ -353,6 +358,7 @@ func (r *ClawReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&rbacv1.Role{}).
 		Owns(&rbacv1.RoleBinding{}).
 		Owns(&networkingv1.NetworkPolicy{}).
+		Owns(&networkingv1.Ingress{}).
 		Watches(&clawv1alpha1.ClawChannel{}, handler.EnqueueRequestsFromMapFunc(r.findClawsForChannel)).
 		Complete(r)
 }

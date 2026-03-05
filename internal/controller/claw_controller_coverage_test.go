@@ -3551,6 +3551,147 @@ func TestNetworkPolicyEnabled(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Unit tests: buildIngress
+// ---------------------------------------------------------------------------
+
+func TestBuildIngress_Basic(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "prod"},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Ingress: &clawv1alpha1.IngressSpec{
+				Enabled: true,
+				Host:    "agent.example.com",
+			},
+		},
+	}
+	ing := buildIngress(claw, 18900)
+
+	if ing.Name != "my-agent" {
+		t.Errorf("expected name my-agent, got %s", ing.Name)
+	}
+	if len(ing.Spec.Rules) != 1 {
+		t.Fatalf("expected 1 rule, got %d", len(ing.Spec.Rules))
+	}
+	if ing.Spec.Rules[0].Host != "agent.example.com" {
+		t.Errorf("expected host agent.example.com, got %s", ing.Spec.Rules[0].Host)
+	}
+	paths := ing.Spec.Rules[0].HTTP.Paths
+	if len(paths) != 1 || paths[0].Backend.Service.Port.Number != 18900 {
+		t.Error("expected backend service port 18900")
+	}
+	if ing.Spec.IngressClassName != nil {
+		t.Error("expected nil IngressClassName when not specified")
+	}
+	if ing.Spec.TLS != nil {
+		t.Error("expected nil TLS when not specified")
+	}
+}
+
+func TestBuildIngress_WithTLS(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "prod"},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Ingress: &clawv1alpha1.IngressSpec{
+				Enabled:   true,
+				Host:      "agent.example.com",
+				ClassName: "nginx",
+				TLS: &clawv1alpha1.IngressTLS{
+					SecretName: "agent-tls",
+				},
+			},
+		},
+	}
+	ing := buildIngress(claw, 18900)
+
+	if ing.Spec.IngressClassName == nil || *ing.Spec.IngressClassName != "nginx" {
+		t.Error("expected IngressClassName nginx")
+	}
+	if len(ing.Spec.TLS) != 1 {
+		t.Fatalf("expected 1 TLS entry, got %d", len(ing.Spec.TLS))
+	}
+	if ing.Spec.TLS[0].SecretName != "agent-tls" {
+		t.Errorf("expected TLS secret agent-tls, got %s", ing.Spec.TLS[0].SecretName)
+	}
+	if len(ing.Spec.TLS[0].Hosts) != 1 || ing.Spec.TLS[0].Hosts[0] != "agent.example.com" {
+		t.Error("expected TLS host agent.example.com")
+	}
+}
+
+func TestBuildIngress_WithBasicAuth(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "prod"},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Ingress: &clawv1alpha1.IngressSpec{
+				Enabled: true,
+				Host:    "agent.example.com",
+				BasicAuth: &clawv1alpha1.BasicAuthSpec{
+					Enabled:    true,
+					SecretName: "htpasswd-secret",
+				},
+			},
+		},
+	}
+	ing := buildIngress(claw, 18900)
+
+	if ing.Annotations["nginx.ingress.kubernetes.io/auth-type"] != "basic" {
+		t.Error("expected auth-type basic annotation")
+	}
+	if ing.Annotations["nginx.ingress.kubernetes.io/auth-secret"] != "htpasswd-secret" {
+		t.Error("expected auth-secret annotation")
+	}
+}
+
+func TestBuildIngress_WithCustomAnnotations(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "prod"},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Ingress: &clawv1alpha1.IngressSpec{
+				Enabled: true,
+				Host:    "agent.example.com",
+				BasicAuth: &clawv1alpha1.BasicAuthSpec{
+					Enabled:    true,
+					SecretName: "htpasswd-secret",
+				},
+				Annotations: map[string]string{
+					"custom/annotation":                        "value",
+					"nginx.ingress.kubernetes.io/auth-type":     "custom-override",
+				},
+			},
+		},
+	}
+	ing := buildIngress(claw, 18900)
+
+	// User annotations override basic auth annotations.
+	if ing.Annotations["nginx.ingress.kubernetes.io/auth-type"] != "custom-override" {
+		t.Error("expected user annotation to override basic auth annotation")
+	}
+	if ing.Annotations["custom/annotation"] != "value" {
+		t.Error("expected custom annotation to be present")
+	}
+}
+
+func TestEnsureIngress_NoOp(t *testing.T) {
+	// When ingress is nil, ensureIngress should be a no-op.
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+		Spec:       clawv1alpha1.ClawSpec{Runtime: clawv1alpha1.RuntimeOpenClaw},
+	}
+	if claw.Spec.Ingress != nil {
+		t.Error("expected nil ingress spec")
+	}
+
+	// Also test with enabled=false.
+	claw.Spec.Ingress = &clawv1alpha1.IngressSpec{Enabled: false}
+	if claw.Spec.Ingress.Enabled {
+		t.Error("expected disabled ingress")
+	}
+}
+
 func containsSubstring(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
 }
