@@ -27,6 +27,9 @@ vendor/
 # Kubernetes
 *.kubeconfig
 
+# Worktrees
+.worktrees/
+
 # Environment
 .env
 .env.local
