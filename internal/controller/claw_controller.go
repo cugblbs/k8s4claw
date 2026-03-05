@@ -72,6 +72,11 @@ func (r *ClawReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, fmt.Errorf("failed to ensure ConfigMap: %w", err)
 	}
 
+	// Ensure per-instance ServiceAccount exists before StatefulSet references it.
+	if err := r.ensureServiceAccount(ctx, &claw); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to ensure ServiceAccount: %w", err)
+	}
+
 	// Ensure StatefulSet exists and is up to date.
 	if err := r.ensureStatefulSet(ctx, &claw, adapter); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to ensure StatefulSet: %w", err)
@@ -291,6 +296,14 @@ func (r *ClawReconciler) buildStatefulSet(ctx context.Context, claw *clawv1alpha
 		},
 	}
 
+	// Set the per-instance ServiceAccount on the pod template.
+	// Only force automountServiceAccountToken=false for operator-managed SAs;
+	// user-managed SAs may need the token mounted (e.g., for in-cluster API access).
+	podTemplate.Spec.ServiceAccountName = serviceAccountName(claw)
+	if claw.Spec.ServiceAccount == nil || claw.Spec.ServiceAccount.Name == "" {
+		podTemplate.Spec.AutomountServiceAccountToken = ptr.To(false)
+	}
+
 	// Set terminationGracePeriodSeconds.
 	gracePeriod := int64(adapter.GracefulShutdownSeconds()) + 10
 	podTemplate.Spec.TerminationGracePeriodSeconds = &gracePeriod
@@ -318,6 +331,7 @@ func (r *ClawReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Service{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.ConfigMap{}).
+		Owns(&corev1.ServiceAccount{}).
 		Watches(&clawv1alpha1.ClawChannel{}, handler.EnqueueRequestsFromMapFunc(r.findClawsForChannel)).
 		Complete(r)
 }

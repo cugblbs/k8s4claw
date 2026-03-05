@@ -16,6 +16,7 @@ import (
 	apimachineryruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -2946,6 +2947,288 @@ func TestUpdateStatus_PendingPhase(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// ===========================================================================
+// ServiceAccount tests
+// ===========================================================================
+
+func TestBuildServiceAccount_Defaults(t *testing.T) {
+	tests := []struct {
+		name           string
+		claw           *clawv1alpha1.Claw
+		wantName       string
+		wantAnnotation map[string]string
+	}{
+		{
+			name: "default SA named after claw",
+			claw: &clawv1alpha1.Claw{
+				ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "default"},
+				Spec:       clawv1alpha1.ClawSpec{Runtime: clawv1alpha1.RuntimeOpenClaw},
+			},
+			wantName:       "my-agent",
+			wantAnnotation: nil,
+		},
+		{
+			name: "SA with annotations from spec",
+			claw: &clawv1alpha1.Claw{
+				ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "default"},
+				Spec: clawv1alpha1.ClawSpec{
+					Runtime: clawv1alpha1.RuntimeOpenClaw,
+					ServiceAccount: &clawv1alpha1.ServiceAccountRef{
+						Annotations: map[string]string{
+							"eks.amazonaws.com/role-arn": "arn:aws:iam::role/test",
+						},
+					},
+				},
+			},
+			wantName:       "my-agent",
+			wantAnnotation: map[string]string{"eks.amazonaws.com/role-arn": "arn:aws:iam::role/test"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sa := buildServiceAccount(tt.claw)
+			if sa.Name != tt.wantName {
+				t.Errorf("Name = %q, want %q", sa.Name, tt.wantName)
+			}
+			if sa.Namespace != tt.claw.Namespace {
+				t.Errorf("Namespace = %q, want %q", sa.Namespace, tt.claw.Namespace)
+			}
+			if sa.AutomountServiceAccountToken == nil || *sa.AutomountServiceAccountToken != false {
+				t.Error("AutomountServiceAccountToken should be false")
+			}
+			// Check labels.
+			labels := clawLabels(tt.claw)
+			for k, v := range labels {
+				if sa.Labels[k] != v {
+					t.Errorf("label %s = %q, want %q", k, sa.Labels[k], v)
+				}
+			}
+			// Check annotations.
+			if tt.wantAnnotation == nil {
+				if sa.Annotations != nil {
+					t.Errorf("expected nil annotations, got %v", sa.Annotations)
+				}
+			} else {
+				for k, v := range tt.wantAnnotation {
+					if sa.Annotations[k] != v {
+						t.Errorf("annotation %s = %q, want %q", k, sa.Annotations[k], v)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestServiceAccountName_UserManaged(t *testing.T) {
+	tests := []struct {
+		name     string
+		claw     *clawv1alpha1.Claw
+		wantName string
+	}{
+		{
+			name: "nil ServiceAccount returns claw name",
+			claw: &clawv1alpha1.Claw{
+				ObjectMeta: metav1.ObjectMeta{Name: "agent-1"},
+				Spec:       clawv1alpha1.ClawSpec{},
+			},
+			wantName: "agent-1",
+		},
+		{
+			name: "empty name returns claw name",
+			claw: &clawv1alpha1.Claw{
+				ObjectMeta: metav1.ObjectMeta{Name: "agent-2"},
+				Spec: clawv1alpha1.ClawSpec{
+					ServiceAccount: &clawv1alpha1.ServiceAccountRef{Name: ""},
+				},
+			},
+			wantName: "agent-2",
+		},
+		{
+			name: "custom name returned as-is",
+			claw: &clawv1alpha1.Claw{
+				ObjectMeta: metav1.ObjectMeta{Name: "agent-3"},
+				Spec: clawv1alpha1.ClawSpec{
+					ServiceAccount: &clawv1alpha1.ServiceAccountRef{Name: "my-custom-sa"},
+				},
+			},
+			wantName: "my-custom-sa",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := serviceAccountName(tt.claw)
+			if got != tt.wantName {
+				t.Errorf("serviceAccountName() = %q, want %q", got, tt.wantName)
+			}
+		})
+	}
+}
+
+func TestEnsureServiceAccount_UserManaged_IsNoOp(t *testing.T) {
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
+	r := newFakeReconciler(fakeClient)
+
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default", UID: "uid-1"},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime:        clawv1alpha1.RuntimeOpenClaw,
+			ServiceAccount: &clawv1alpha1.ServiceAccountRef{Name: "user-managed-sa"},
+		},
+	}
+
+	if err := r.ensureServiceAccount(ctx, claw); err != nil {
+		t.Fatalf("expected no error for user-managed SA, got: %v", err)
+	}
+
+	// Verify no SA was created.
+	var sa corev1.ServiceAccount
+	err := fakeClient.Get(ctx, types.NamespacedName{Name: "user-managed-sa", Namespace: "default"}, &sa)
+	if err == nil {
+		t.Error("expected SA not to be created for user-managed case")
+	}
+}
+
+func TestEnsureServiceAccount_CreateError(t *testing.T) {
+	errSimulated := errors.New("simulated SA create error")
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
+	wrappedClient := interceptor.NewClient(fakeClient, interceptor.Funcs{
+		Create: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.CreateOption) error {
+			if _, ok := obj.(*corev1.ServiceAccount); ok {
+				return errSimulated
+			}
+			return c.Create(ctx, obj, opts...)
+		},
+	})
+
+	r := newFakeReconciler(wrappedClient)
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-sa", Namespace: "default", UID: "uid-2"},
+		Spec:       clawv1alpha1.ClawSpec{Runtime: clawv1alpha1.RuntimeOpenClaw},
+	}
+
+	err := r.ensureServiceAccount(ctx, claw)
+	if err == nil {
+		t.Fatal("expected error from ensureServiceAccount Create, got nil")
+	}
+	if !errors.Is(err, errSimulated) {
+		t.Errorf("expected simulated create error, got: %v", err)
+	}
+}
+
+func TestEnsureServiceAccount_GetError(t *testing.T) {
+	errSimulated := errors.New("simulated SA get error")
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
+	wrappedClient := interceptor.NewClient(fakeClient, interceptor.Funcs{
+		Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+			if _, ok := obj.(*corev1.ServiceAccount); ok {
+				return errSimulated
+			}
+			return c.Get(ctx, key, obj, opts...)
+		},
+	})
+
+	r := newFakeReconciler(wrappedClient)
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-sa-get", Namespace: "default", UID: "uid-3"},
+		Spec:       clawv1alpha1.ClawSpec{Runtime: clawv1alpha1.RuntimeOpenClaw},
+	}
+
+	err := r.ensureServiceAccount(ctx, claw)
+	if err == nil {
+		t.Fatal("expected error from ensureServiceAccount Get, got nil")
+	}
+	if !errors.Is(err, errSimulated) {
+		t.Errorf("expected simulated get error, got: %v", err)
+	}
+}
+
+func TestEnsureServiceAccount_UpdateError(t *testing.T) {
+	errSimulated := errors.New("simulated SA update error")
+
+	clawUID := types.UID("uid-4")
+	// Pre-create the SA with a proper ownerReference so it passes the ownership check.
+	existingSA := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-sa-upd",
+			Namespace: "default",
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "claw.prismer.ai/v1alpha1",
+					Kind:       "Claw",
+					Name:       "test-sa-upd",
+					UID:        clawUID,
+					Controller: ptr.To(true),
+				},
+			},
+		},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithObjects(existingSA).Build()
+	wrappedClient := interceptor.NewClient(fakeClient, interceptor.Funcs{
+		Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+			if _, ok := obj.(*corev1.ServiceAccount); ok {
+				return errSimulated
+			}
+			return c.Update(ctx, obj, opts...)
+		},
+	})
+
+	r := newFakeReconciler(wrappedClient)
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-sa-upd", Namespace: "default", UID: clawUID},
+		Spec:       clawv1alpha1.ClawSpec{Runtime: clawv1alpha1.RuntimeOpenClaw},
+	}
+
+	err := r.ensureServiceAccount(ctx, claw)
+	if err == nil {
+		t.Fatal("expected error from ensureServiceAccount Update, got nil")
+	}
+	if !errors.Is(err, errSimulated) {
+		t.Errorf("expected simulated update error, got: %v", err)
+	}
+}
+
+func TestEnsureServiceAccount_UnownedSARejected(t *testing.T) {
+	// Pre-create an SA with no ownerReferences (simulates namespace default SA).
+	existingSA := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{Name: "conflict-sa", Namespace: "default"},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithObjects(existingSA).Build()
+	r := newFakeReconciler(fakeClient)
+
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "conflict-sa", Namespace: "default", UID: "uid-conflict"},
+		Spec:       clawv1alpha1.ClawSpec{Runtime: clawv1alpha1.RuntimeOpenClaw},
+	}
+
+	err := r.ensureServiceAccount(ctx, claw)
+	if err == nil {
+		t.Fatal("expected error for unowned SA, got nil")
+	}
+	if !containsSubstring(err.Error(), "not owned by this Claw") {
+		t.Errorf("expected ownership error, got: %v", err)
+	}
+}
+
+func TestEnsureServiceAccount_SetControllerReferenceError(t *testing.T) {
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
+	r := incompleteSchemeReconciler(fakeClient)
+
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-sa-ref", Namespace: "default", UID: "uid-5"},
+		Spec:       clawv1alpha1.ClawSpec{Runtime: clawv1alpha1.RuntimeOpenClaw},
+	}
+
+	err := r.ensureServiceAccount(ctx, claw)
+	if err == nil {
+		t.Fatal("expected error from SetControllerReference, got nil")
+	}
+	if !containsSubstring(err.Error(), "controller reference") {
+		t.Errorf("expected controller reference error, got: %v", err)
+	}
+}
 
 func containsSubstring(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))

@@ -977,3 +977,150 @@ func TestClawReconciler_PVCReclaimRetain(t *testing.T) {
 		t.Fatalf("expected PVC %q to still exist with Retain policy, but got error: %v", pvcName, err)
 	}
 }
+
+func TestClawReconciler_ServiceAccountCreated(t *testing.T) {
+	ns := fmt.Sprintf("test-sa-create-%d", time.Now().UnixNano())
+	createNamespace(t, ns)
+
+	clawName := "test-claw-sa"
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      clawName,
+			Namespace: ns,
+		},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+		},
+	}
+
+	if err := k8sClient.Create(ctx, claw); err != nil {
+		t.Fatalf("failed to create Claw: %v", err)
+	}
+
+	// Wait for the ServiceAccount to appear.
+	var sa corev1.ServiceAccount
+	waitForCondition(t, testTimeout, testInterval, func() (bool, error) {
+		err := k8sClient.Get(ctx, types.NamespacedName{
+			Name:      clawName,
+			Namespace: ns,
+		}, &sa)
+		if err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				return false, nil
+			}
+			return false, err
+		}
+		return true, nil
+	})
+
+	// Verify automountServiceAccountToken = false.
+	if sa.AutomountServiceAccountToken == nil || *sa.AutomountServiceAccountToken != false {
+		t.Error("expected AutomountServiceAccountToken=false")
+	}
+
+	// Verify labels.
+	expectedLabels := map[string]string{
+		"app.kubernetes.io/name":     "claw",
+		"app.kubernetes.io/instance": clawName,
+		"claw.prismer.ai/runtime":    "openclaw",
+		"claw.prismer.ai/instance":   clawName,
+	}
+	for k, v := range expectedLabels {
+		if got := sa.Labels[k]; got != v {
+			t.Errorf("SA label %q: expected %q, got %q", k, v, got)
+		}
+	}
+
+	// Verify ownerReferences (kind=Claw).
+	if len(sa.OwnerReferences) != 1 {
+		t.Fatalf("expected 1 ownerReference, got %d", len(sa.OwnerReferences))
+	}
+	if sa.OwnerReferences[0].Kind != "Claw" {
+		t.Errorf("expected ownerReference kind=Claw, got %q", sa.OwnerReferences[0].Kind)
+	}
+
+	// Verify StatefulSet references the SA.
+	var sts appsv1.StatefulSet
+	waitForCondition(t, testTimeout, testInterval, func() (bool, error) {
+		err := k8sClient.Get(ctx, types.NamespacedName{
+			Name:      clawName,
+			Namespace: ns,
+		}, &sts)
+		if err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				return false, nil
+			}
+			return false, err
+		}
+		return true, nil
+	})
+
+	if sts.Spec.Template.Spec.ServiceAccountName != clawName {
+		t.Errorf("expected StatefulSet serviceAccountName=%q, got %q", clawName, sts.Spec.Template.Spec.ServiceAccountName)
+	}
+	if sts.Spec.Template.Spec.AutomountServiceAccountToken == nil || *sts.Spec.Template.Spec.AutomountServiceAccountToken != false {
+		t.Error("expected StatefulSet automountServiceAccountToken=false")
+	}
+}
+
+func TestClawReconciler_ServiceAccountUserManaged(t *testing.T) {
+	ns := fmt.Sprintf("test-sa-user-%d", time.Now().UnixNano())
+	createNamespace(t, ns)
+
+	clawName := "test-claw-sa-custom"
+	customSAName := "my-custom-sa"
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      clawName,
+			Namespace: ns,
+		},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			ServiceAccount: &clawv1alpha1.ServiceAccountRef{
+				Name: customSAName,
+			},
+		},
+	}
+
+	if err := k8sClient.Create(ctx, claw); err != nil {
+		t.Fatalf("failed to create Claw: %v", err)
+	}
+
+	// Wait for the StatefulSet to appear (proves reconcile completed).
+	var sts appsv1.StatefulSet
+	waitForCondition(t, testTimeout, testInterval, func() (bool, error) {
+		err := k8sClient.Get(ctx, types.NamespacedName{
+			Name:      clawName,
+			Namespace: ns,
+		}, &sts)
+		if err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				return false, nil
+			}
+			return false, err
+		}
+		return true, nil
+	})
+
+	// Verify the operator did NOT create a SA named after the claw.
+	var sa corev1.ServiceAccount
+	err := k8sClient.Get(ctx, types.NamespacedName{
+		Name:      clawName,
+		Namespace: ns,
+	}, &sa)
+	if err == nil {
+		t.Error("expected no operator-managed SA to be created when user-managed SA is specified")
+	} else if client.IgnoreNotFound(err) != nil {
+		t.Fatalf("unexpected error checking for SA: %v", err)
+	}
+
+	// Verify StatefulSet references the custom SA name.
+	if sts.Spec.Template.Spec.ServiceAccountName != customSAName {
+		t.Errorf("expected StatefulSet serviceAccountName=%q, got %q", customSAName, sts.Spec.Template.Spec.ServiceAccountName)
+	}
+
+	// Verify automountServiceAccountToken is NOT forced false for user-managed SA.
+	if sts.Spec.Template.Spec.AutomountServiceAccountToken != nil {
+		t.Errorf("expected AutomountServiceAccountToken to be nil (not overridden) for user-managed SA, got %v", *sts.Spec.Template.Spec.AutomountServiceAccountToken)
+	}
+}
