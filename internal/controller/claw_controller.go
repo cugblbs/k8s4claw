@@ -128,7 +128,13 @@ func (r *ClawReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, fmt.Errorf("failed to update status: %w", err)
 	}
 
-	return ctrl.Result{}, nil
+	// Reconcile VolumeSnapshots (cron-based scheduling).
+	snapshotResult, err := r.reconcileSnapshots(ctx, &claw)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to reconcile snapshots: %w", err)
+	}
+
+	return snapshotResult, nil
 }
 
 // handleDeletion runs cleanup logic and removes the finalizer so the object can be garbage-collected.

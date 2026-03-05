@@ -3838,6 +3838,44 @@ func TestRemoveOwnerRef(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Unit tests: buildVolumeSnapshot
+// ---------------------------------------------------------------------------
+
+func TestBuildVolumeSnapshot(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "prod"},
+	}
+	snap := buildVolumeSnapshot(claw, "my-agent-session-20260305-120000", "session-my-agent-0", "csi-snapshot-class")
+
+	if snap.Name != "my-agent-session-20260305-120000" {
+		t.Errorf("expected name my-agent-session-20260305-120000, got %s", snap.Name)
+	}
+	if snap.Namespace != "prod" {
+		t.Errorf("expected namespace prod, got %s", snap.Namespace)
+	}
+	if snap.Labels["claw.prismer.ai/instance"] != "my-agent" {
+		t.Error("expected claw.prismer.ai/instance label")
+	}
+	if *snap.Spec.Source.PersistentVolumeClaimName != "session-my-agent-0" {
+		t.Errorf("expected PVC name session-my-agent-0, got %s", *snap.Spec.Source.PersistentVolumeClaimName)
+	}
+	if snap.Spec.VolumeSnapshotClassName == nil || *snap.Spec.VolumeSnapshotClassName != "csi-snapshot-class" {
+		t.Error("expected snapshot class csi-snapshot-class")
+	}
+}
+
+func TestBuildVolumeSnapshot_NoClass(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "prod"},
+	}
+	snap := buildVolumeSnapshot(claw, "my-agent-session-snap", "session-my-agent-0", "")
+
+	if snap.Spec.VolumeSnapshotClassName != nil {
+		t.Error("expected nil snapshot class when not specified")
+	}
+}
+
 func containsSubstring(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
 }
