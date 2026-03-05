@@ -84,6 +84,7 @@ func main() {
 		Client:                mgr.GetClient(),
 		Scheme:                mgr.GetScheme(),
 		Registry:              registry,
+		Recorder:              mgr.GetEventRecorderFor("claw-controller"),
 		NativeSidecarsEnabled: enableNativeSidecars,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Claw")

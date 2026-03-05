@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -33,6 +34,7 @@ type ClawReconciler struct {
 	client.Client
 	Scheme                *runtime.Scheme
 	Registry              *clawruntime.Registry
+	Recorder              record.EventRecorder
 	NativeSidecarsEnabled bool
 }
 
@@ -154,7 +156,28 @@ func (r *ClawReconciler) handleDeletion(ctx context.Context, claw *clawv1alpha1.
 			return ctrl.Result{}, fmt.Errorf("failed to remove PVC ownerReferences: %w", err)
 		}
 	case "Archive":
-		logger.Info("Archive reclaim policy not yet implemented, retaining PVCs", "name", claw.Name)
+		logger.Info("Archive reclaim requested, retaining PVCs until archiver completes", "name", claw.Name)
+		// Set ArchivePending condition.
+		apimeta.SetStatusCondition(&claw.Status.Conditions, metav1.Condition{
+			Type:               "ArchivePending",
+			Status:             metav1.ConditionTrue,
+			Reason:             "ArchiveRequested",
+			Message:            "PVCs retained pending archival; archiver sidecar will handle upload",
+			ObservedGeneration: claw.Generation,
+			LastTransitionTime: metav1.Now(),
+		})
+		if err := r.Status().Update(ctx, claw); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to set ArchivePending condition: %w", err)
+		}
+		// Emit event.
+		if r.Recorder != nil {
+			r.Recorder.Event(claw, corev1.EventTypeNormal, "ArchiveRequested",
+				"Archive reclaim policy active; PVCs retained pending archival")
+		}
+		// Remove ownerReferences so PVCs survive deletion (same as Retain).
+		if err := r.removePVCOwnerReferences(ctx, claw); err != nil {
+			return ctrl.Result{}, fmt.Errorf("failed to remove PVC ownerReferences for archive: %w", err)
+		}
 	}
 
 	// Remove the finalizer to allow Kubernetes to delete the resource.
