@@ -8,6 +8,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -739,11 +740,11 @@ func TestClawReconciler_UnknownRuntime(t *testing.T) {
 	ns := fmt.Sprintf("test-sts-unknown-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
 
-	// Use "custom" which passes CRD validation but has no adapter registered.
-	clawName := "test-claw-unknown"
+	// Use "custom" which passes CRD enum validation but has no adapter registered.
+	// The validating webhook should reject this at admission time.
 	claw := &clawv1alpha1.Claw{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      clawName,
+			Name:      "test-claw-unknown",
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
@@ -751,25 +752,11 @@ func TestClawReconciler_UnknownRuntime(t *testing.T) {
 		},
 	}
 
-	if err := k8sClient.Create(ctx, claw); err != nil {
-		t.Fatalf("failed to create Claw: %v", err)
-	}
-
-	// Wait briefly to give the reconciler time to process.
-	time.Sleep(2 * time.Second)
-
-	// Verify NO StatefulSet is created.
-	var sts appsv1.StatefulSet
-	err := k8sClient.Get(ctx, types.NamespacedName{
-		Name:      clawName,
-		Namespace: ns,
-	}, &sts)
+	err := k8sClient.Create(ctx, claw)
 	if err == nil {
-		t.Fatal("expected no StatefulSet to be created for unknown runtime, but one was found")
+		t.Fatal("expected webhook to reject create with unsupported runtime, but it succeeded")
 	}
-	if client.IgnoreNotFound(err) != nil {
-		t.Fatalf("unexpected error checking for StatefulSet: %v", err)
-	}
+	t.Logf("webhook correctly rejected unknown runtime: %v", err)
 }
 
 func TestClawReconciler_PVCReclaimDelete(t *testing.T) {
@@ -1122,5 +1109,167 @@ func TestClawReconciler_ServiceAccountUserManaged(t *testing.T) {
 	// Verify automountServiceAccountToken is NOT forced false for user-managed SA.
 	if sts.Spec.Template.Spec.AutomountServiceAccountToken != nil {
 		t.Errorf("expected AutomountServiceAccountToken to be nil (not overridden) for user-managed SA, got %v", *sts.Spec.Template.Spec.AutomountServiceAccountToken)
+	}
+}
+
+// --- Webhook integration tests ---
+
+func TestWebhook_RejectsInvalidCreate_CredentialExclusivity(t *testing.T) {
+	ns := fmt.Sprintf("test-wh-cred-%d", time.Now().UnixNano())
+	createNamespace(t, ns)
+
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "bad-creds",
+			Namespace: ns,
+		},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Credentials: &clawv1alpha1.CredentialSpec{
+				SecretRef:      &corev1.LocalObjectReference{Name: "my-secret"},
+				ExternalSecret: &clawv1alpha1.ExternalSecretRef{Provider: "vault", Store: "s", Path: "p"},
+			},
+		},
+	}
+
+	err := k8sClient.Create(ctx, claw)
+	if err == nil {
+		t.Fatal("expected webhook to reject create with both secretRef and externalSecret, but it succeeded")
+	}
+	t.Logf("webhook correctly rejected create: %v", err)
+}
+
+func TestWebhook_RejectsRuntimeChange(t *testing.T) {
+	ns := fmt.Sprintf("test-wh-immut-%d", time.Now().UnixNano())
+	createNamespace(t, ns)
+
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "immut-runtime",
+			Namespace: ns,
+		},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+		},
+	}
+
+	if err := k8sClient.Create(ctx, claw); err != nil {
+		t.Fatalf("failed to create Claw: %v", err)
+	}
+
+	// Wait for reconciler to process (ensures object is settled).
+	waitForCondition(t, testTimeout, testInterval, func() (bool, error) {
+		var fetched clawv1alpha1.Claw
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: claw.Name, Namespace: ns}, &fetched); err != nil {
+			return false, nil
+		}
+		return controllerutil.ContainsFinalizer(&fetched, clawFinalizer), nil
+	})
+
+	// Re-fetch and attempt runtime change.
+	var fetched clawv1alpha1.Claw
+	if err := k8sClient.Get(ctx, types.NamespacedName{Name: claw.Name, Namespace: ns}, &fetched); err != nil {
+		t.Fatalf("failed to get Claw: %v", err)
+	}
+	fetched.Spec.Runtime = clawv1alpha1.RuntimeNanoClaw
+	err := k8sClient.Update(ctx, &fetched)
+	if err == nil {
+		t.Fatal("expected webhook to reject runtime change, but update succeeded")
+	}
+	t.Logf("webhook correctly rejected runtime change: %v", err)
+}
+
+func TestWebhook_DefaultsReclaimPolicy(t *testing.T) {
+	ns := fmt.Sprintf("test-wh-default-%d", time.Now().UnixNano())
+	createNamespace(t, ns)
+
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "default-reclaim",
+			Namespace: ns,
+		},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Persistence: &clawv1alpha1.PersistenceSpec{
+				Session: &clawv1alpha1.VolumeSpec{
+					Enabled:   true,
+					Size:      "1Gi",
+					MountPath: "/data/session",
+				},
+			},
+		},
+	}
+
+	if err := k8sClient.Create(ctx, claw); err != nil {
+		t.Fatalf("failed to create Claw: %v", err)
+	}
+
+	// Wait for the object to appear in the cache and verify the defaulter set reclaimPolicy.
+	waitForCondition(t, testTimeout, testInterval, func() (bool, error) {
+		var fetched clawv1alpha1.Claw
+		if err := k8sClient.Get(ctx, types.NamespacedName{Name: claw.Name, Namespace: ns}, &fetched); err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				return false, nil
+			}
+			return false, err
+		}
+		if fetched.Spec.Persistence == nil {
+			return false, nil
+		}
+		if fetched.Spec.Persistence.ReclaimPolicy != clawv1alpha1.ReclaimRetain {
+			t.Errorf("expected reclaimPolicy to be defaulted to %q, got %q", clawv1alpha1.ReclaimRetain, fetched.Spec.Persistence.ReclaimPolicy)
+		}
+		return true, nil
+	})
+}
+
+func TestClawReconciler_NoRoleWithoutSelfConfigure(t *testing.T) {
+	ns := fmt.Sprintf("test-no-rbac-%d", time.Now().UnixNano())
+	createNamespace(t, ns)
+
+	clawName := "test-claw-no-rbac"
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      clawName,
+			Namespace: ns,
+		},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+		},
+	}
+
+	if err := k8sClient.Create(ctx, claw); err != nil {
+		t.Fatalf("failed to create Claw: %v", err)
+	}
+
+	// Wait for reconcile to complete (StatefulSet exists).
+	waitForCondition(t, testTimeout, testInterval, func() (bool, error) {
+		var sts appsv1.StatefulSet
+		err := k8sClient.Get(ctx, types.NamespacedName{Name: clawName, Namespace: ns}, &sts)
+		if err != nil {
+			if client.IgnoreNotFound(err) == nil {
+				return false, nil
+			}
+			return false, err
+		}
+		return true, nil
+	})
+
+	// Verify no Role was created (needsRBAC returns false without SelfConfigure).
+	var role rbacv1.Role
+	err := k8sClient.Get(ctx, types.NamespacedName{Name: clawName, Namespace: ns}, &role)
+	if err == nil {
+		t.Error("expected no Role to be created without selfConfigure, but Role exists")
+	} else if client.IgnoreNotFound(err) != nil {
+		t.Fatalf("unexpected error checking for Role: %v", err)
+	}
+
+	// Verify no RoleBinding was created.
+	var rb rbacv1.RoleBinding
+	err = k8sClient.Get(ctx, types.NamespacedName{Name: clawName, Namespace: ns}, &rb)
+	if err == nil {
+		t.Error("expected no RoleBinding to be created without selfConfigure, but RoleBinding exists")
+	} else if client.IgnoreNotFound(err) != nil {
+		t.Fatalf("unexpected error checking for RoleBinding: %v", err)
 	}
 }

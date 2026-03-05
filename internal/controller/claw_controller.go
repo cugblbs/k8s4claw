@@ -6,6 +6,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -37,6 +38,7 @@ type ClawReconciler struct {
 // +kubebuilder:rbac:groups=claw.prismer.ai,resources=claws/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=claw.prismer.ai,resources=claws/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=pods;services;persistentvolumeclaims;secrets;events;configmaps;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles;rolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=snapshot.storage.k8s.io,resources=volumesnapshots,verbs=get;list;watch;create;delete
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 
@@ -75,6 +77,14 @@ func (r *ClawReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	// Ensure per-instance ServiceAccount exists before StatefulSet references it.
 	if err := r.ensureServiceAccount(ctx, &claw); err != nil {
 		return ctrl.Result{}, fmt.Errorf("failed to ensure ServiceAccount: %w", err)
+	}
+
+	// Ensure per-instance Role + RoleBinding (only when selfConfigure is enabled).
+	if err := r.ensureRole(ctx, &claw); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to ensure Role: %w", err)
+	}
+	if err := r.ensureRoleBinding(ctx, &claw); err != nil {
+		return ctrl.Result{}, fmt.Errorf("failed to ensure RoleBinding: %w", err)
 	}
 
 	// Ensure StatefulSet exists and is up to date.
@@ -332,6 +342,8 @@ func (r *ClawReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.ServiceAccount{}).
+		Owns(&rbacv1.Role{}).
+		Owns(&rbacv1.RoleBinding{}).
 		Watches(&clawv1alpha1.ClawChannel{}, handler.EnqueueRequestsFromMapFunc(r.findClawsForChannel)).
 		Complete(r)
 }

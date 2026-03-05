@@ -18,6 +18,11 @@ rules:
     resources: [volumesnapshots]
     verbs: [get, list, watch, create, delete]
 
+  # RBAC (per-instance Role + RoleBinding for selfConfigure)
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: [roles, rolebindings]
+    verbs: [get, list, watch, create, update, patch, delete]
+
   # CRDs
   - apiGroups: ["claw.prismer.ai"]
     resources: [claws, claws/status, clawchannels, clawchannels/status]

@@ -3230,6 +3230,130 @@ func TestEnsureServiceAccount_SetControllerReferenceError(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Unit tests: buildRole / buildRoleBinding
+// ---------------------------------------------------------------------------
+
+func TestBuildRole(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-agent",
+			Namespace: "prod",
+		},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+		},
+	}
+
+	role := buildRole(claw)
+
+	if role.Name != "my-agent" {
+		t.Errorf("expected role name=my-agent, got %q", role.Name)
+	}
+	if role.Namespace != "prod" {
+		t.Errorf("expected namespace=prod, got %q", role.Namespace)
+	}
+
+	// Verify labels.
+	if role.Labels["claw.prismer.ai/instance"] != "my-agent" {
+		t.Errorf("expected instance label=my-agent, got %q", role.Labels["claw.prismer.ai/instance"])
+	}
+
+	// Verify rules.
+	if len(role.Rules) != 2 {
+		t.Fatalf("expected 2 rules, got %d", len(role.Rules))
+	}
+
+	// Rule 0: get own Claw instance.
+	r0 := role.Rules[0]
+	if r0.APIGroups[0] != "claw.prismer.ai" {
+		t.Errorf("rule 0: expected apiGroup=claw.prismer.ai, got %q", r0.APIGroups[0])
+	}
+	if r0.Resources[0] != "claws" {
+		t.Errorf("rule 0: expected resource=claws, got %q", r0.Resources[0])
+	}
+	if len(r0.ResourceNames) != 1 || r0.ResourceNames[0] != "my-agent" {
+		t.Errorf("rule 0: expected resourceNames=[my-agent], got %v", r0.ResourceNames)
+	}
+	if r0.Verbs[0] != "get" {
+		t.Errorf("rule 0: expected verb=get, got %v", r0.Verbs)
+	}
+
+	// Rule 1: create/get/list ClawSelfConfigs.
+	r1 := role.Rules[1]
+	if r1.Resources[0] != "clawselfconfigs" {
+		t.Errorf("rule 1: expected resource=clawselfconfigs, got %q", r1.Resources[0])
+	}
+	expectedVerbs := map[string]bool{"create": true, "get": true, "list": true}
+	for _, v := range r1.Verbs {
+		if !expectedVerbs[v] {
+			t.Errorf("rule 1: unexpected verb %q", v)
+		}
+	}
+}
+
+func TestBuildRoleBinding(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-agent",
+			Namespace: "prod",
+		},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+		},
+	}
+
+	rb := buildRoleBinding(claw)
+
+	if rb.Name != "my-agent" {
+		t.Errorf("expected binding name=my-agent, got %q", rb.Name)
+	}
+	if rb.RoleRef.Kind != "Role" || rb.RoleRef.Name != "my-agent" {
+		t.Errorf("expected roleRef Kind=Role Name=my-agent, got Kind=%q Name=%q", rb.RoleRef.Kind, rb.RoleRef.Name)
+	}
+	if rb.RoleRef.APIGroup != "rbac.authorization.k8s.io" {
+		t.Errorf("expected roleRef apiGroup=rbac.authorization.k8s.io, got %q", rb.RoleRef.APIGroup)
+	}
+	if len(rb.Subjects) != 1 {
+		t.Fatalf("expected 1 subject, got %d", len(rb.Subjects))
+	}
+	subj := rb.Subjects[0]
+	if subj.Kind != "ServiceAccount" || subj.Name != "my-agent" || subj.Namespace != "prod" {
+		t.Errorf("expected subject SA my-agent in prod, got Kind=%q Name=%q NS=%q", subj.Kind, subj.Name, subj.Namespace)
+	}
+}
+
+func TestBuildRoleBinding_UserManagedSA(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-agent",
+			Namespace: "prod",
+		},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			ServiceAccount: &clawv1alpha1.ServiceAccountRef{
+				Name: "custom-sa",
+			},
+		},
+	}
+
+	rb := buildRoleBinding(claw)
+
+	if rb.Subjects[0].Name != "custom-sa" {
+		t.Errorf("expected subject to reference custom-sa, got %q", rb.Subjects[0].Name)
+	}
+}
+
+func TestNeedsRBAC_CurrentlyAlwaysFalse(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+		Spec:       clawv1alpha1.ClawSpec{Runtime: clawv1alpha1.RuntimeOpenClaw},
+	}
+	if needsRBAC(claw) {
+		t.Error("expected needsRBAC to return false until SelfConfigure field is added to CRD")
+	}
+}
+
 func containsSubstring(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
 }
