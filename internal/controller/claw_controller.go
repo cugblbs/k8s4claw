@@ -336,6 +336,10 @@ func (r *ClawReconciler) buildStatefulSet(ctx context.Context, claw *clawv1alpha
 		podTemplate.Labels[k] = v
 	}
 
+	// Inject IPC Bus sidecar (must come before channel sidecars).
+	cfg := adapter.DefaultConfig()
+	injectIPCBusIfNeeded(claw, podTemplate, string(claw.Spec.Runtime), cfg.GatewayPort)
+
 	// Inject channel sidecars.
 	if len(claw.Spec.Channels) > 0 {
 		skipped, err := r.injectChannelSidecars(ctx, claw, podTemplate)
@@ -375,7 +379,7 @@ func (r *ClawReconciler) buildStatefulSet(ctx context.Context, claw *clawv1alpha
 	}
 
 	// Set terminationGracePeriodSeconds.
-	gracePeriod := int64(adapter.GracefulShutdownSeconds()) + 10
+	gracePeriod := int64(adapter.GracefulShutdownSeconds()) + 15
 	podTemplate.Spec.TerminationGracePeriodSeconds = &gracePeriod
 
 	return &appsv1.StatefulSet{

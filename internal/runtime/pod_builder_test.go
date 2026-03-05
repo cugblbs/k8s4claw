@@ -1104,3 +1104,26 @@ func assertSecurityContext(t *testing.T, sc *corev1.SecurityContext) {
 		t.Errorf("SeccompProfile.Type = %q; want %q", sc.SeccompProfile.Type, corev1.SeccompProfileTypeRuntimeDefault)
 	}
 }
+
+func TestBuildRuntimeContainer_PreStopHook(t *testing.T) {
+	t.Parallel()
+
+	claw := minimalClaw()
+	spec := minimalSpec()
+
+	c := buildRuntimeContainer(claw, spec)
+
+	if c.Lifecycle == nil {
+		t.Fatal("expected Lifecycle to be set")
+	}
+	if c.Lifecycle.PreStop == nil {
+		t.Fatal("expected PreStop to be set")
+	}
+	if c.Lifecycle.PreStop.Exec == nil {
+		t.Fatal("expected PreStop.Exec to be set")
+	}
+	cmd := c.Lifecycle.PreStop.Exec.Command
+	if len(cmd) != 3 || cmd[0] != "sh" || cmd[1] != "-c" || cmd[2] != "sleep 2" {
+		t.Errorf("PreStop command = %v; want [sh -c sleep 2]", cmd)
+	}
+}

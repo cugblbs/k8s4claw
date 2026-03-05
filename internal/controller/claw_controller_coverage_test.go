@@ -4019,6 +4019,148 @@ func TestInjectArchiverIfNeeded_NoOp(t *testing.T) {
 	}
 }
 
+func TestShouldInjectIPCBus(t *testing.T) {
+	tests := []struct {
+		name string
+		claw *clawv1alpha1.Claw
+		want bool
+	}{
+		{
+			name: "no channels",
+			claw: &clawv1alpha1.Claw{},
+			want: false,
+		},
+		{
+			name: "one channel",
+			claw: &clawv1alpha1.Claw{
+				Spec: clawv1alpha1.ClawSpec{
+					Channels: []clawv1alpha1.ChannelRef{
+						{Name: "my-channel"},
+					},
+				},
+			},
+			want: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldInjectIPCBus(tt.claw); got != tt.want {
+				t.Errorf("shouldInjectIPCBus() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestInjectIPCBusSidecar(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "my-agent", Namespace: "prod"},
+		Spec: clawv1alpha1.ClawSpec{
+			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Channels: []clawv1alpha1.ChannelRef{
+				{Name: "ch1"},
+			},
+		},
+	}
+
+	podTemplate := &corev1.PodTemplateSpec{
+		Spec: corev1.PodSpec{
+			InitContainers: []corev1.Container{
+				{Name: "claw-init"},
+			},
+		},
+	}
+	injectIPCBusSidecar(claw, podTemplate, "openclaw", 18900)
+
+	if len(podTemplate.Spec.InitContainers) != 2 {
+		t.Fatalf("expected 2 init containers, got %d", len(podTemplate.Spec.InitContainers))
+	}
+
+	// Verify position: claw-init at 0, ipc-bus at 1.
+	if podTemplate.Spec.InitContainers[0].Name != "claw-init" {
+		t.Errorf("expected claw-init at index 0, got %s", podTemplate.Spec.InitContainers[0].Name)
+	}
+
+	sidecar := podTemplate.Spec.InitContainers[1]
+	if sidecar.Name != "ipc-bus" {
+		t.Errorf("expected name ipc-bus, got %s", sidecar.Name)
+	}
+	if sidecar.Image != IPCBusImage {
+		t.Errorf("expected image %s, got %s", IPCBusImage, sidecar.Image)
+	}
+	if sidecar.RestartPolicy == nil || *sidecar.RestartPolicy != corev1.ContainerRestartPolicyAlways {
+		t.Error("expected native sidecar restartPolicy=Always")
+	}
+
+	// Check env vars.
+	envMap := make(map[string]string)
+	for _, e := range sidecar.Env {
+		envMap[e.Name] = e.Value
+	}
+	if envMap["CLAW_RUNTIME"] != "openclaw" {
+		t.Errorf("CLAW_RUNTIME = %q; want %q", envMap["CLAW_RUNTIME"], "openclaw")
+	}
+	if envMap["CLAW_GATEWAY_PORT"] != "18900" {
+		t.Errorf("CLAW_GATEWAY_PORT = %q; want %q", envMap["CLAW_GATEWAY_PORT"], "18900")
+	}
+	if envMap["IPC_SOCKET_PATH"] != "/var/run/claw" {
+		t.Errorf("IPC_SOCKET_PATH = %q; want %q", envMap["IPC_SOCKET_PATH"], "/var/run/claw")
+	}
+
+	// Check preStop hook.
+	if sidecar.Lifecycle == nil || sidecar.Lifecycle.PreStop == nil {
+		t.Fatal("expected preStop lifecycle hook")
+	}
+	cmd := sidecar.Lifecycle.PreStop.Exec.Command
+	if len(cmd) != 2 || cmd[0] != "/claw-ipcbus" || cmd[1] != "shutdown" {
+		t.Errorf("preStop command = %v; want [/claw-ipcbus shutdown]", cmd)
+	}
+
+	// Check volume mounts.
+	if len(sidecar.VolumeMounts) != 2 {
+		t.Fatalf("expected 2 volume mounts, got %d", len(sidecar.VolumeMounts))
+	}
+	if sidecar.VolumeMounts[0].Name != "ipc-socket" || sidecar.VolumeMounts[0].MountPath != "/var/run/claw" {
+		t.Errorf("unexpected first volume mount: %+v", sidecar.VolumeMounts[0])
+	}
+	if sidecar.VolumeMounts[1].Name != "wal-data" || sidecar.VolumeMounts[1].MountPath != "/var/run/claw/wal" {
+		t.Errorf("unexpected second volume mount: %+v", sidecar.VolumeMounts[1])
+	}
+}
+
+func TestInjectIPCBusIfNeeded_Idempotent(t *testing.T) {
+	claw := &clawv1alpha1.Claw{
+		ObjectMeta: metav1.ObjectMeta{Name: "test", Namespace: "default"},
+		Spec: clawv1alpha1.ClawSpec{
+			Channels: []clawv1alpha1.ChannelRef{
+				{Name: "ch1"},
+			},
+		},
+	}
+
+	podTemplate := &corev1.PodTemplateSpec{
+		Spec: corev1.PodSpec{
+			InitContainers: []corev1.Container{
+				{Name: "claw-init"},
+			},
+		},
+	}
+
+	// Inject twice.
+	injectIPCBusIfNeeded(claw, podTemplate, "openclaw", 18900)
+	injectIPCBusIfNeeded(claw, podTemplate, "openclaw", 18900)
+
+	// Count ipc-bus containers.
+	count := 0
+	for _, c := range podTemplate.Spec.InitContainers {
+		if c.Name == ipcBusSidecarName() {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 ipc-bus container, got %d", count)
+	}
+}
+
 func containsSubstring(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
 }

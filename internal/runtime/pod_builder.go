@@ -290,6 +290,13 @@ func buildRuntimeContainer(claw *v1alpha1.Claw, spec *RuntimeSpec) corev1.Contai
 		LivenessProbe:   spec.LivenessProbe,
 		ReadinessProbe:  spec.ReadinessProbe,
 		SecurityContext: ContainerSecurityContext(),
+		Lifecycle: &corev1.Lifecycle{
+			PreStop: &corev1.LifecycleHandler{
+				Exec: &corev1.ExecAction{
+					Command: []string{"sh", "-c", "sleep 2"},
+				},
+			},
+		},
 	}
 }
 
