@@ -1,0 +1,13 @@
+apiVersion: claw.prismer.ai/v1alpha1
+kind: ClawSelfConfig
+metadata:
+  name: agent-install-skill
+spec:
+  clawRef: my-research-agent
+  addSkills:
+    - "@anthropic/tool-use"
+  configPatch:
+    model: "claude-sonnet-4"
+  addEnvVars:
+    - name: CUSTOM_FLAG
+      value: "true"

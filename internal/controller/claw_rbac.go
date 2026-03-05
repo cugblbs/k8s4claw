@@ -15,11 +15,9 @@ import (
 )
 
 // needsRBAC returns true when the Claw requires a per-instance Role and RoleBinding.
-// Currently this is gated on spec.selfConfigure.enabled (Phase 6); until that
-// field exists on the CRD this always returns false.
-func needsRBAC(_ *clawv1alpha1.Claw) bool {
-	// TODO: return claw.Spec.SelfConfigure != nil && claw.Spec.SelfConfigure.Enabled
-	return false
+// This is gated on spec.selfConfigure.enabled.
+func needsRBAC(claw *clawv1alpha1.Claw) bool {
+	return claw.Spec.SelfConfigure != nil && claw.Spec.SelfConfigure.Enabled
 }
 
 // ensureRole creates or updates the per-instance Role scoped to the Claw's

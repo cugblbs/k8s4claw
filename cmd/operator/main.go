@@ -97,6 +97,14 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "ClawChannel")
 		os.Exit(1)
 	}
+	if err := (&controller.ClawSelfConfigReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("selfconfig-controller"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "ClawSelfConfig")
+		os.Exit(1)
+	}
 
 	// Register admission webhooks.
 	if err := builder.WebhookManagedBy[*clawv1alpha1.Claw](mgr, &clawv1alpha1.Claw{}).
