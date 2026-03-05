@@ -11,14 +11,17 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	clawv1alpha1 "github.com/Prismer-AI/k8s4claw/api/v1alpha1"
 	clawruntime "github.com/Prismer-AI/k8s4claw/internal/runtime"
+	clawwebhook "github.com/Prismer-AI/k8s4claw/internal/webhook"
 )
 
 var (
@@ -37,6 +40,9 @@ func TestMain(m *testing.M) {
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
+		WebhookInstallOptions: envtest.WebhookInstallOptions{
+			Paths: []string{filepath.Join("..", "..", "config", "webhook")},
+		},
 	}
 
 	var err error
@@ -60,10 +66,19 @@ func TestMain(m *testing.M) {
 	registry.Register(clawv1alpha1.RuntimeZeroClaw, &clawruntime.ZeroClawAdapter{})
 	registry.Register(clawv1alpha1.RuntimePicoClaw, &clawruntime.PicoClawAdapter{})
 
+	// Configure webhook server using envtest-assigned host/port/certs.
+	webhookInstallOptions := &testEnv.WebhookInstallOptions
+	webhookServer := webhook.NewServer(webhook.Options{
+		Host:    webhookInstallOptions.LocalServingHost,
+		Port:    webhookInstallOptions.LocalServingPort,
+		CertDir: webhookInstallOptions.LocalServingCertDir,
+	})
+
 	// Create the manager with metrics disabled (avoid port conflicts in tests).
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
-		Scheme:  scheme.Scheme,
-		Metrics: metricsserver.Options{BindAddress: "0"},
+		Scheme:        scheme.Scheme,
+		Metrics:       metricsserver.Options{BindAddress: "0"},
+		WebhookServer: webhookServer,
 	})
 	if err != nil {
 		panic("failed to create manager: " + err.Error())
@@ -90,6 +105,14 @@ func TestMain(m *testing.M) {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		panic("failed to set up ClawChannelReconciler: " + err.Error())
+	}
+
+	// Register admission webhooks.
+	if err := builder.WebhookManagedBy[*clawv1alpha1.Claw](mgr, &clawv1alpha1.Claw{}).
+		WithValidator(&clawwebhook.ClawValidator{Registry: registry}).
+		WithDefaulter(&clawwebhook.ClawDefaulter{}).
+		Complete(); err != nil {
+		panic("failed to set up Claw webhook: " + err.Error())
 	}
 
 	// Start manager in a goroutine.

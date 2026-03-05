@@ -1,0 +1,45 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: k8s4claw-mutating-webhook
+  labels:
+    app.kubernetes.io/name: k8s4claw-operator
+    app.kubernetes.io/part-of: k8s4claw
+webhooks:
+  - name: mclaw.kb.io
+    admissionReviewVersions: ["v1"]
+    clientConfig:
+      service:
+        name: k8s4claw-webhook-service
+        namespace: k8s4claw-system
+        path: /mutate-claw-prismer-ai-v1alpha1-claw
+    failurePolicy: Fail
+    sideEffects: None
+    rules:
+      - apiGroups: ["claw.prismer.ai"]
+        apiVersions: ["v1alpha1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["claws"]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: k8s4claw-validating-webhook
+  labels:
+    app.kubernetes.io/name: k8s4claw-operator
+    app.kubernetes.io/part-of: k8s4claw
+webhooks:
+  - name: vclaw.kb.io
+    admissionReviewVersions: ["v1"]
+    clientConfig:
+      service:
+        name: k8s4claw-webhook-service
+        namespace: k8s4claw-system
+        path: /validate-claw-prismer-ai-v1alpha1-claw
+    failurePolicy: Fail
+    sideEffects: None
+    rules:
+      - apiGroups: ["claw.prismer.ai"]
+        apiVersions: ["v1alpha1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["claws"]

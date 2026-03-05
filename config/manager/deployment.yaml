@@ -32,6 +32,9 @@ spec:
             - name: health
               containerPort: 8081
               protocol: TCP
+            - name: webhook
+              containerPort: 9443
+              protocol: TCP
           livenessProbe:
             httpGet:
               path: /healthz
@@ -44,6 +47,10 @@ spec:
               port: 8081
             initialDelaySeconds: 5
             periodSeconds: 10
+          volumeMounts:
+            - name: webhook-server-cert
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
           resources:
             requests:
               cpu: 100m
@@ -55,5 +62,10 @@ spec:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             runAsNonRoot: true
+      volumes:
+        - name: webhook-server-cert
+          secret:
+            secretName: k8s4claw-webhook-server-cert
+            defaultMode: 420
       securityContext:
         runAsNonRoot: true

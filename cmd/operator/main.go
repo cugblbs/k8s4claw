@@ -16,9 +16,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/webhook"
+
 	clawv1alpha1 "github.com/Prismer-AI/k8s4claw/api/v1alpha1"
 	"github.com/Prismer-AI/k8s4claw/internal/controller"
 	clawruntime "github.com/Prismer-AI/k8s4claw/internal/runtime"
+	clawwebhook "github.com/Prismer-AI/k8s4claw/internal/webhook"
 )
 
 var (
@@ -36,11 +40,13 @@ func main() {
 	var probeAddr string
 	var enableLeaderElection bool
 	var enableNativeSidecars bool
+	var webhookPort int
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false, "Enable leader election for controller manager.")
 	flag.BoolVar(&enableNativeSidecars, "enable-native-sidecars", true, "Use native sidecars (K8s 1.28+). Set false for older clusters.")
+	flag.IntVar(&webhookPort, "webhook-port", 9443, "The port the webhook server binds to.")
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
@@ -53,6 +59,7 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "k8s4claw-operator.prismer.ai",
+		WebhookServer:          webhook.NewServer(webhook.Options{Port: webhookPort}),
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to create manager")
@@ -87,6 +94,15 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClawChannel")
+		os.Exit(1)
+	}
+
+	// Register admission webhooks.
+	if err := builder.WebhookManagedBy[*clawv1alpha1.Claw](mgr, &clawv1alpha1.Claw{}).
+		WithValidator(&clawwebhook.ClawValidator{Registry: registry}).
+		WithDefaulter(&clawwebhook.ClawDefaulter{}).
+		Complete(); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "Claw")
 		os.Exit(1)
 	}
 
