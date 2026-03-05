@@ -58,9 +58,11 @@ type inboundHandler struct {
 	secret string
 }
 
-func newInboundHandler(s sender, secret, _ string) *inboundHandler {
+func newInboundHandler(s sender, secret string) *inboundHandler {
 	return &inboundHandler{sender: s, secret: secret}
 }
+
+const maxRequestBody = 16 * 1024 * 1024 // 16 MiB, match IPC Bus limit
 
 func (h *inboundHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -68,9 +70,10 @@ func (h *inboundHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "failed to read body", http.StatusBadRequest)
+		http.Error(w, "request body too large or unreadable", http.StatusRequestEntityTooLarge)
 		return
 	}
 
@@ -150,7 +153,9 @@ func (p *outboundPoster) post(ctx context.Context, payload json.RawMessage) erro
 		resp, err := p.client.Do(req)
 		if err != nil {
 			lastErr = err
-			time.Sleep(time.Duration(attempt+1) * time.Second)
+			if err := retrySleep(ctx, attempt); err != nil {
+				return fmt.Errorf("outbound post cancelled: %w", err)
+			}
 			continue
 		}
 		resp.Body.Close()
@@ -159,7 +164,18 @@ func (p *outboundPoster) post(ctx context.Context, payload json.RawMessage) erro
 			return nil
 		}
 		lastErr = fmt.Errorf("target returned status %d", resp.StatusCode)
-		time.Sleep(time.Duration(attempt+1) * time.Second)
+		if err := retrySleep(ctx, attempt); err != nil {
+			return fmt.Errorf("outbound post cancelled: %w", err)
+		}
 	}
 	return fmt.Errorf("outbound post failed after %d attempts: %w", p.cfg.RetryAttempts, lastErr)
+}
+
+func retrySleep(ctx context.Context, attempt int) error {
+	select {
+	case <-time.After(time.Duration(attempt+1) * time.Second):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
@@ -16,7 +17,11 @@ import (
 )
 
 func main() {
-	zapLog, _ := zap.NewProduction()
+	zapLog, err := zap.NewProduction()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
 	logger := zapr.NewLogger(zapLog)
 
 	configJSON := os.Getenv("CHANNEL_CONFIG")
@@ -41,7 +46,7 @@ func main() {
 	// Inbound: HTTP -> IPC Bus.
 	mode := os.Getenv("CHANNEL_MODE")
 	if mode == "inbound" || mode == "bidirectional" {
-		mux.Handle(cfg.Path, newInboundHandler(client, cfg.Secret, cfg.Path))
+		mux.Handle(cfg.Path, newInboundHandler(client, cfg.Secret))
 	}
 
 	// Health check.
@@ -65,7 +70,9 @@ func main() {
 
 	go func() {
 		<-ctx.Done()
-		srv.Close()
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		srv.Shutdown(shutdownCtx)
 	}()
 
 	logger.Info("webhook sidecar starting", "addr", addr, "mode", mode)

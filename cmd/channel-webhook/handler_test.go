@@ -35,7 +35,7 @@ func (m *mockSender) getSent() []json.RawMessage {
 
 func TestInboundHandler_Success(t *testing.T) {
 	sender := &mockSender{}
-	h := newInboundHandler(sender, "", "/webhook")
+	h := newInboundHandler(sender, "")
 
 	body := `{"event":"test"}`
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(body))
@@ -60,7 +60,7 @@ func TestInboundHandler_Success(t *testing.T) {
 func TestInboundHandler_HMACVerification(t *testing.T) {
 	secret := "test-secret"
 	sender := &mockSender{}
-	h := newInboundHandler(sender, secret, "/webhook")
+	h := newInboundHandler(sender, secret)
 
 	body := `{"event":"signed"}`
 	mac := hmac.New(sha256.New, []byte(secret))
@@ -82,7 +82,7 @@ func TestInboundHandler_HMACVerification(t *testing.T) {
 func TestInboundHandler_HMACRejection(t *testing.T) {
 	secret := "test-secret"
 	sender := &mockSender{}
-	h := newInboundHandler(sender, secret, "/webhook")
+	h := newInboundHandler(sender, secret)
 
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewBufferString(`{"bad":"sig"}`))
 	req.Header.Set("X-Signature-256", "sha256=invalid")
@@ -97,7 +97,7 @@ func TestInboundHandler_HMACRejection(t *testing.T) {
 
 func TestInboundHandler_WrongMethod(t *testing.T) {
 	sender := &mockSender{}
-	h := newInboundHandler(sender, "", "/webhook")
+	h := newInboundHandler(sender, "")
 
 	req := httptest.NewRequest(http.MethodGet, "/webhook", nil)
 	w := httptest.NewRecorder()

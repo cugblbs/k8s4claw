@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net"
-	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -211,8 +210,7 @@ func TestClient_ConnectFailsWithoutServer(t *testing.T) {
 }
 
 func TestClient_MissingChannelName(t *testing.T) {
-	os.Setenv("CHANNEL_NAME", "")
-	defer os.Unsetenv("CHANNEL_NAME")
+	t.Setenv("CHANNEL_NAME", "")
 
 	ctx := context.Background()
 	_, err := Connect(ctx, WithChannelName(""))

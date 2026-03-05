@@ -36,6 +36,7 @@ func (b *buffer) pop() *message {
 		return nil
 	}
 	msg := b.items[0]
+	b.items[0] = nil // allow GC
 	b.items = b.items[1:]
 	return msg
 }

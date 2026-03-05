@@ -3,6 +3,7 @@ package channel
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -19,17 +20,18 @@ type InboundMessage struct {
 
 // Client connects to the IPC Bus and provides send/receive for channel sidecars.
 type Client struct {
-	cfg        *clientConfig
-	conn       net.Conn
-	mu         sync.Mutex // guards conn, connected
-	connected  bool
-	buf        *buffer
-	throttled  bool
-	throttleMu sync.Mutex
-	throttleCh chan struct{} // closed when resume received
-	inbound    chan *InboundMessage
-	done       chan struct{}
-	closeOnce  sync.Once
+	cfg          *clientConfig
+	conn         net.Conn
+	mu           sync.Mutex // guards conn, connected, reconnecting
+	connected    bool
+	reconnecting bool
+	buf          *buffer
+	throttled    bool
+	throttleMu   sync.Mutex
+	throttleCh   chan struct{} // closed when resume received
+	inbound      chan *InboundMessage
+	done         chan struct{}
+	closeOnce    sync.Once
 }
 
 // Connect establishes a UDS connection to the IPC Bus and registers.
@@ -182,7 +184,7 @@ func (c *Client) Send(ctx context.Context, payload json.RawMessage) error {
 		c.cfg.logger.Info("send failed, buffering message", "err", err)
 		c.markDisconnected()
 		c.buf.push(msg)
-		go c.reconnectLoop()
+		c.tryReconnect()
 		return nil
 	}
 
@@ -236,13 +238,13 @@ func (c *Client) readLoop() {
 				return
 			default:
 			}
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				c.cfg.logger.Info("IPC Bus disconnected")
 			} else {
 				c.cfg.logger.Error(err, "read error from IPC Bus")
 			}
 			c.markDisconnected()
-			go c.reconnectLoop()
+			c.tryReconnect()
 			return
 		}
 
@@ -310,7 +312,7 @@ func (c *Client) heartbeatLoop() {
 			if err := writeMessage(conn, hb); err != nil {
 				c.cfg.logger.Info("heartbeat send failed", "err", err)
 				c.markDisconnected()
-				go c.reconnectLoop()
+				c.tryReconnect()
 			}
 		}
 	}
@@ -326,7 +328,24 @@ func (c *Client) markDisconnected() {
 	}
 }
 
+func (c *Client) tryReconnect() {
+	c.mu.Lock()
+	if c.reconnecting {
+		c.mu.Unlock()
+		return
+	}
+	c.reconnecting = true
+	c.mu.Unlock()
+	go c.reconnectLoop()
+}
+
 func (c *Client) reconnectLoop() {
+	defer func() {
+		c.mu.Lock()
+		c.reconnecting = false
+		c.mu.Unlock()
+	}()
+
 	interval := c.cfg.reconnectInterval
 	for {
 		select {
