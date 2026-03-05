@@ -78,10 +78,7 @@ func (c *Client) connectWithRetry(ctx context.Context) error {
 		case <-time.After(interval):
 		}
 
-		interval = interval * 2
-		if interval > maxReconnectInterval {
-			interval = maxReconnectInterval
-		}
+		interval = min(interval*2, maxReconnectInterval)
 	}
 }
 
@@ -351,9 +348,6 @@ func (c *Client) reconnectLoop() {
 		}
 
 		c.cfg.logger.Info("reconnection failed", "err", err)
-		interval = interval * 2
-		if interval > maxReconnectInterval {
-			interval = maxReconnectInterval
-		}
+		interval = min(interval*2, maxReconnectInterval)
 	}
 }
