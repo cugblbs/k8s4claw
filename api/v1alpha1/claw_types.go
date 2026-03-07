@@ -179,6 +179,8 @@ type VolumeStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Runtime",type=string,JSONPath=`.spec.runtime`
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Version",type=string,JSONPath=`.status.autoUpdate.currentVersion`,priority=1
+// +kubebuilder:printcolumn:name="Circuit",type=boolean,JSONPath=`.status.autoUpdate.circuitOpen`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // Claw is the Schema for the claws API.

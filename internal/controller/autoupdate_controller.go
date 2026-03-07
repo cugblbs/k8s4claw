@@ -412,9 +412,16 @@ func (r *AutoUpdateReconciler) requeueAtNextCron(spec *clawv1alpha1.AutoUpdateSp
 
 // extractVersionFromImage extracts the tag from an image reference.
 // e.g., "ghcr.io/prismer-ai/k8s4claw-openclaw:1.2.0" → "1.2.0"
+// Handles port numbers: "registry:5000/org/repo:1.2.0" → "1.2.0"
 func extractVersionFromImage(image string) string {
-	if idx := strings.LastIndex(image, ":"); idx >= 0 {
-		return image[idx+1:]
+	// Find the last path segment to avoid confusion with port numbers.
+	lastSlash := strings.LastIndex(image, "/")
+	search := image
+	if lastSlash >= 0 {
+		search = image[lastSlash+1:]
+	}
+	if idx := strings.LastIndex(search, ":"); idx >= 0 {
+		return search[idx+1:]
 	}
 	return ""
 }

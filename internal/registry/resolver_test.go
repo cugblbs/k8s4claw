@@ -160,6 +160,65 @@ func TestTokenExchange(t *testing.T) {
 	}
 }
 
+func TestImageForRuntime(t *testing.T) {
+	tests := []struct {
+		runtime string
+		want    string
+	}{
+		{"openclaw", "ghcr.io/prismer-ai/k8s4claw-openclaw"},
+		{"nanoclaw", "ghcr.io/prismer-ai/k8s4claw-nanoclaw"},
+		{"zeroclaw", "ghcr.io/prismer-ai/k8s4claw-zeroclaw"},
+		{"picoclaw", "ghcr.io/prismer-ai/k8s4claw-picoclaw"},
+		{"unknown", ""},
+		{"", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.runtime, func(t *testing.T) {
+			if got := ImageForRuntime(tt.runtime); got != tt.want {
+				t.Errorf("ImageForRuntime(%q) = %q, want %q", tt.runtime, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRegistryURLForImage(t *testing.T) {
+	tests := []struct {
+		name  string
+		image string
+		want  string
+	}{
+		{"ghcr image", "ghcr.io/prismer-ai/k8s4claw-openclaw", "https://ghcr.io/v2/prismer-ai/k8s4claw-openclaw"},
+		{"docker hub", "docker.io/library/nginx", "https://docker.io/v2/library/nginx"},
+		{"single segment", "nginx", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RegistryURLForImage(tt.image); got != tt.want {
+				t.Errorf("RegistryURLForImage(%q) = %q, want %q", tt.image, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTokenURLForRegistry(t *testing.T) {
+	tests := []struct {
+		host string
+		want string
+	}{
+		{"ghcr.io", "https://ghcr.io/token"},
+		{"registry-1.docker.io", "https://auth.docker.io/token"},
+		{"docker.io", "https://auth.docker.io/token"},
+		{"custom.registry.io", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.host, func(t *testing.T) {
+			if got := TokenURLForRegistry(tt.host); got != tt.want {
+				t.Errorf("TokenURLForRegistry(%q) = %q, want %q", tt.host, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestParseImageRef(t *testing.T) {
 	tests := []struct {
 		image      string
