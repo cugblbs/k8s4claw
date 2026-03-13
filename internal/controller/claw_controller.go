@@ -305,7 +305,7 @@ func (r *ClawReconciler) updateStatus(ctx context.Context, claw *clawv1alpha1.Cl
 
 	// Emit events on phase transitions.
 	previousPhase := claw.Status.Phase
-	if previousPhase != phase {
+	if previousPhase != phase && r.Recorder != nil {
 		switch phase {
 		case clawv1alpha1.ClawPhaseProvisioning:
 			r.Recorder.Event(claw, corev1.EventTypeNormal, EventClawProvisioning, "Instance entering provisioning")

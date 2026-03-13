@@ -107,6 +107,14 @@ func TestMain(m *testing.M) {
 		panic("failed to set up ClawChannelReconciler: " + err.Error())
 	}
 
+	// Set up the ClawSelfConfigReconciler.
+	if err := (&ClawSelfConfigReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		panic("failed to set up ClawSelfConfigReconciler: " + err.Error())
+	}
+
 	// Register admission webhooks.
 	if err := builder.WebhookManagedBy[*clawv1alpha1.Claw](mgr, &clawv1alpha1.Claw{}).
 		WithValidator(&clawwebhook.ClawValidator{Registry: registry}).
