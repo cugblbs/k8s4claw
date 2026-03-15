@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -16,16 +17,27 @@ import (
 	channel "github.com/Prismer-AI/k8s4claw/sdk/channel"
 )
 
-func main() {
+func newLogger() (logr.Logger, error) {
 	zapLog, err := zap.NewProduction()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
+		return logr.Logger{}, fmt.Errorf("failed to initialize logger: %w", err)
+	}
+	return zapr.NewLogger(zapLog), nil
+}
+
+// loadConfig reads CHANNEL_CONFIG from the environment and parses it.
+func loadConfig() (*webhookConfig, error) {
+	return parseConfig(os.Getenv("CHANNEL_CONFIG"))
+}
+
+func main() {
+	logger, err := newLogger()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
-	logger := zapr.NewLogger(zapLog)
 
-	configJSON := os.Getenv("CHANNEL_CONFIG")
-	cfg, err := parseConfig(configJSON)
+	cfg, err := loadConfig()
 	if err != nil {
 		logger.Error(err, "failed to parse config")
 		os.Exit(1)
@@ -41,32 +53,53 @@ func main() {
 	}
 	defer client.Close()
 
-	mux := http.NewServeMux()
-
-	// Inbound: HTTP -> IPC Bus.
 	mode := os.Getenv("CHANNEL_MODE")
-	if mode == "inbound" || mode == "bidirectional" {
-		mux.Handle(cfg.Path, newInboundHandler(client, cfg.Secret))
-	}
 
-	// Health check.
-	mux.Handle("/healthz", newHealthHandler(func() bool {
-		return client.BufferedCount() == 0
-	}))
-
-	// Outbound: IPC Bus -> HTTP.
-	if (mode == "outbound" || mode == "bidirectional") && cfg.TargetURL != "" {
-		poster := newOutboundPoster(cfg)
-		inCh, err := client.Receive(ctx)
+	var outCh <-chan *channel.InboundMessage
+	if needsOutbound(mode, cfg.TargetURL) {
+		outCh, err = client.Receive(ctx)
 		if err != nil {
 			logger.Error(err, "failed to start receiving")
 			os.Exit(1)
 		}
-		go runOutboundLoop(ctx, inCh, poster, logger)
 	}
 
-	addr := fmt.Sprintf(":%d", cfg.ListenPort)
-	srv := &http.Server{Addr: addr, Handler: mux}
+	if err := run(ctx, cfg, mode, client, client.BufferedCount, outCh, logger); err != nil {
+		logger.Error(err, "server error")
+		os.Exit(1)
+	}
+}
+
+// needsOutbound returns true if the mode requires outbound posting.
+func needsOutbound(mode string, targetURL string) bool {
+	return (mode == "outbound" || mode == "bidirectional") && targetURL != ""
+}
+
+// runOpts holds optional parameters for run().
+type runOpts struct {
+	listener net.Listener
+}
+
+func run(ctx context.Context, cfg *webhookConfig, mode string, s sender, bufferedCount func() int, outCh <-chan *channel.InboundMessage, logger logr.Logger, opts ...runOpts) error {
+	mux := buildMux(cfg, mode, s, bufferedCount)
+
+	if outCh != nil {
+		poster := newOutboundPoster(cfg)
+		go runOutboundLoop(ctx, outCh, poster, logger)
+	}
+
+	var ln net.Listener
+	if len(opts) > 0 && opts[0].listener != nil {
+		ln = opts[0].listener
+	} else {
+		var err error
+		ln, err = net.Listen("tcp", fmt.Sprintf(":%d", cfg.ListenPort))
+		if err != nil {
+			return fmt.Errorf("failed to listen: %w", err)
+		}
+	}
+
+	srv := &http.Server{Handler: mux}
 
 	go func() {
 		<-ctx.Done()
@@ -75,11 +108,26 @@ func main() {
 		srv.Shutdown(shutdownCtx)
 	}()
 
-	logger.Info("webhook sidecar starting", "addr", addr, "mode", mode)
-	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-		logger.Error(err, "HTTP server error")
-		os.Exit(1)
+	logger.Info("webhook sidecar starting", "addr", ln.Addr().String(), "mode", mode)
+	if err := srv.Serve(ln); err != http.ErrServerClosed {
+		return fmt.Errorf("HTTP server error: %w", err)
 	}
+	return nil
+}
+
+// buildMux creates the HTTP mux with inbound and health handlers.
+func buildMux(cfg *webhookConfig, mode string, s sender, bufferedCount func() int) *http.ServeMux {
+	mux := http.NewServeMux()
+
+	if mode == "inbound" || mode == "bidirectional" {
+		mux.Handle(cfg.Path, newInboundHandler(s, cfg.Secret))
+	}
+
+	mux.Handle("/healthz", newHealthHandler(func() bool {
+		return bufferedCount() == 0
+	}))
+
+	return mux
 }
 
 func runOutboundLoop(ctx context.Context, ch <-chan *channel.InboundMessage, poster *outboundPoster, logger logr.Logger) {
