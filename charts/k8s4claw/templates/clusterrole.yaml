@@ -1,0 +1,56 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "k8s4claw.fullname" . }}
+  labels:
+    {{- include "k8s4claw.labels" . | nindent 4 }}
+rules:
+  # Core resources
+  - apiGroups: [""]
+    resources: [pods, services, persistentvolumeclaims, secrets, events, configmaps, serviceaccounts]
+    verbs: [get, list, watch, create, update, patch, delete]
+
+  # Apps (StatefulSets)
+  - apiGroups: ["apps"]
+    resources: [statefulsets]
+    verbs: [get, list, watch, create, update, patch, delete]
+
+  # CSI VolumeSnapshots
+  - apiGroups: ["snapshot.storage.k8s.io"]
+    resources: [volumesnapshots]
+    verbs: [get, list, watch, create, delete]
+
+  # Networking (NetworkPolicy + Ingress)
+  - apiGroups: ["networking.k8s.io"]
+    resources: [networkpolicies, ingresses]
+    verbs: [get, list, watch, create, update, patch, delete]
+
+  # Policy (PodDisruptionBudgets)
+  - apiGroups: ["policy"]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list, watch, create, update, patch, delete]
+
+  # RBAC (per-instance Role + RoleBinding for selfConfigure)
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: [roles, rolebindings]
+    verbs: [get, list, watch, create, update, patch, delete]
+
+  # CRDs
+  - apiGroups: ["claw.prismer.ai"]
+    resources: [claws, claws/status, clawchannels, clawchannels/status]
+    verbs: [get, list, watch, create, update, patch, delete]
+
+  # CRD finalizer subresources
+  - apiGroups: ["claw.prismer.ai"]
+    resources: [claws/finalizers, clawchannels/finalizers]
+    verbs: [update]
+
+  # ExternalSecrets (optional)
+  - apiGroups: ["external-secrets.io"]
+    resources: [externalsecrets]
+    verbs: [get, list, watch, create, update, patch, delete]
+
+  # Leader election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: [leases]
+    verbs: [get, list, watch, create, update, patch, delete]
