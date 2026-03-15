@@ -2,6 +2,7 @@ package ipcbus
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -161,6 +162,167 @@ func TestWAL_Compact(t *testing.T) {
 	}
 
 	w.Close()
+}
+
+func TestWAL_NeedsCompaction_BelowThreshold(t *testing.T) {
+	dir := t.TempDir()
+	w, err := NewWAL(dir)
+	if err != nil {
+		t.Fatalf("NewWAL: %v", err)
+	}
+	defer w.Close()
+
+	// A fresh WAL with a few entries should not need compaction.
+	msg := newTestMessage("ch1")
+	if err := w.Append(msg); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+	if err := w.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	if w.NeedsCompaction() {
+		t.Error("expected NeedsCompaction=false for small WAL")
+	}
+}
+
+func TestWAL_NeedsCompaction_AboveThreshold(t *testing.T) {
+	dir := t.TempDir()
+	w, err := NewWAL(dir)
+	if err != nil {
+		t.Fatalf("NewWAL: %v", err)
+	}
+	defer w.Close()
+
+	// Write enough data to exceed the 10 MB threshold.
+	// Build a valid JSON string payload of ~10KB.
+	filler := make([]byte, 10*1024)
+	for i := range filler {
+		filler[i] = 'a'
+	}
+	bigPayload := json.RawMessage(fmt.Sprintf(`"%s"`, string(filler)))
+
+	for i := 0; i < 1100; i++ {
+		msg := NewMessage(TypeMessage, "ch-large", bigPayload)
+		if err := w.Append(msg); err != nil {
+			t.Fatalf("Append %d: %v", i, err)
+		}
+	}
+
+	if err := w.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+
+	if !w.NeedsCompaction() {
+		// Check actual file size for debugging.
+		info, _ := os.Stat(w.path())
+		t.Errorf("expected NeedsCompaction=true after writing >10MB, fileSize=%d", info.Size())
+	}
+}
+
+func TestWAL_MarkDLQ(t *testing.T) {
+	dir := t.TempDir()
+	w, err := NewWAL(dir)
+	if err != nil {
+		t.Fatalf("NewWAL: %v", err)
+	}
+	defer w.Close()
+
+	msg := newTestMessage("ch1")
+	if err := w.Append(msg); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	if err := w.MarkDLQ(msg.ID); err != nil {
+		t.Fatalf("MarkDLQ: %v", err)
+	}
+
+	pending := w.PendingEntries()
+	if len(pending) != 0 {
+		t.Fatalf("expected 0 pending after MarkDLQ, got %d", len(pending))
+	}
+}
+
+func TestWAL_MarkDLQ_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	w, err := NewWAL(dir)
+	if err != nil {
+		t.Fatalf("NewWAL: %v", err)
+	}
+	defer w.Close()
+
+	err = w.MarkDLQ("nonexistent-id")
+	if err == nil {
+		t.Fatal("expected error for nonexistent entry")
+	}
+}
+
+func TestWAL_Complete_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	w, err := NewWAL(dir)
+	if err != nil {
+		t.Fatalf("NewWAL: %v", err)
+	}
+	defer w.Close()
+
+	err = w.Complete("nonexistent-id")
+	if err == nil {
+		t.Fatal("expected error for nonexistent entry")
+	}
+}
+
+func TestWAL_IncrementAttempts_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	w, err := NewWAL(dir)
+	if err != nil {
+		t.Fatalf("NewWAL: %v", err)
+	}
+	defer w.Close()
+
+	_, err = w.IncrementAttempts("nonexistent-id")
+	if err == nil {
+		t.Fatal("expected error for nonexistent entry")
+	}
+}
+
+func TestWAL_Recovery_WithDLQ(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write 2 messages, mark one as DLQ, then close.
+	w, err := NewWAL(dir)
+	if err != nil {
+		t.Fatalf("NewWAL: %v", err)
+	}
+
+	msg1 := newTestMessage("ch1")
+	msg2 := newTestMessage("ch2")
+	if err := w.Append(msg1); err != nil {
+		t.Fatalf("Append msg1: %v", err)
+	}
+	if err := w.Append(msg2); err != nil {
+		t.Fatalf("Append msg2: %v", err)
+	}
+	if err := w.MarkDLQ(msg1.ID); err != nil {
+		t.Fatalf("MarkDLQ msg1: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	// Reopen and verify only msg2 is pending.
+	w2, err := NewWAL(dir)
+	if err != nil {
+		t.Fatalf("NewWAL (recovery): %v", err)
+	}
+	defer w2.Close()
+
+	pending := w2.PendingEntries()
+	if len(pending) != 1 {
+		t.Fatalf("expected 1 pending after recovery, got %d", len(pending))
+	}
+	if pending[0].ID != msg2.ID {
+		t.Errorf("expected recovered ID %s, got %s", msg2.ID, pending[0].ID)
+	}
 }
 
 func TestWAL_IncrementAttempts(t *testing.T) {

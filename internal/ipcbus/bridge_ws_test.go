@@ -79,6 +79,60 @@ func TestWebSocketBridge_SendReceive(t *testing.T) {
 	}
 }
 
+func TestSSEBridge_Stubs(t *testing.T) {
+	b := NewSSEBridge("http://localhost:8080")
+	ctx := context.Background()
+
+	if err := b.Connect(ctx); err == nil {
+		t.Fatal("expected error from stub Connect")
+	}
+	if err := b.Send(ctx, nil); err == nil {
+		t.Fatal("expected error from stub Send")
+	}
+	if _, err := b.Receive(ctx); err == nil {
+		t.Fatal("expected error from stub Receive")
+	}
+	if err := b.Close(); err != nil {
+		t.Fatalf("Close should not error: %v", err)
+	}
+}
+
+func TestTCPBridge_Stubs(t *testing.T) {
+	b := NewTCPBridge("localhost:8080")
+	ctx := context.Background()
+
+	if err := b.Connect(ctx); err == nil {
+		t.Fatal("expected error from stub Connect")
+	}
+	if err := b.Send(ctx, nil); err == nil {
+		t.Fatal("expected error from stub Send")
+	}
+	if _, err := b.Receive(ctx); err == nil {
+		t.Fatal("expected error from stub Receive")
+	}
+	if err := b.Close(); err != nil {
+		t.Fatalf("Close should not error: %v", err)
+	}
+}
+
+func TestUDSBridge_Stubs(t *testing.T) {
+	b := NewUDSBridge("localhost:8080")
+	ctx := context.Background()
+
+	if err := b.Connect(ctx); err == nil {
+		t.Fatal("expected error from stub Connect")
+	}
+	if err := b.Send(ctx, nil); err == nil {
+		t.Fatal("expected error from stub Send")
+	}
+	if _, err := b.Receive(ctx); err == nil {
+		t.Fatal("expected error from stub Receive")
+	}
+	if err := b.Close(); err != nil {
+		t.Fatalf("Close should not error: %v", err)
+	}
+}
+
 func TestNewBridge_Factory(t *testing.T) {
 	tests := []struct {
 		rt      RuntimeType

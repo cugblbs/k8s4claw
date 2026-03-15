@@ -135,6 +135,82 @@ func TestDLQ_Eviction(t *testing.T) {
 	}
 }
 
+func TestDLQ_PurgeExpired(t *testing.T) {
+	// Use a very short TTL so entries expire immediately.
+	dlq := newTestDLQ(t, 10000, 50*time.Millisecond)
+
+	// Create some entries that will expire.
+	for i := range 3 {
+		msg := testMessage("chan-" + string(rune('a'+i)))
+		if err := dlq.Put(msg, 1); err != nil {
+			t.Fatalf("Put %d failed: %v", i, err)
+		}
+	}
+
+	// Wait for TTL to pass.
+	time.Sleep(100 * time.Millisecond)
+
+	// Add a fresh entry that should survive.
+	freshMsg := testMessage("chan-fresh")
+	if err := dlq.Put(freshMsg, 2); err != nil {
+		t.Fatalf("Put fresh failed: %v", err)
+	}
+
+	purged, err := dlq.PurgeExpired()
+	if err != nil {
+		t.Fatalf("PurgeExpired failed: %v", err)
+	}
+	if purged != 3 {
+		t.Errorf("expected 3 purged, got %d", purged)
+	}
+
+	if sz := dlq.Size(); sz != 1 {
+		t.Errorf("expected size 1 after purge, got %d", sz)
+	}
+
+	// The fresh entry should still be there.
+	got, err := dlq.Get(freshMsg.ID)
+	if err != nil {
+		t.Fatalf("Get fresh failed: %v", err)
+	}
+	if got == nil {
+		t.Error("expected fresh entry to survive purge")
+	}
+}
+
+func TestDLQ_PurgeExpired_NoneExpired(t *testing.T) {
+	dlq := newTestDLQ(t, 10000, 1*time.Hour)
+
+	msg := testMessage("chan")
+	if err := dlq.Put(msg, 1); err != nil {
+		t.Fatalf("Put failed: %v", err)
+	}
+
+	purged, err := dlq.PurgeExpired()
+	if err != nil {
+		t.Fatalf("PurgeExpired failed: %v", err)
+	}
+	if purged != 0 {
+		t.Errorf("expected 0 purged, got %d", purged)
+	}
+
+	if sz := dlq.Size(); sz != 1 {
+		t.Errorf("expected size 1, got %d", sz)
+	}
+}
+
+func TestDLQ_PurgeExpired_Empty(t *testing.T) {
+	dlq := newTestDLQ(t, 10000, 1*time.Millisecond)
+
+	purged, err := dlq.PurgeExpired()
+	if err != nil {
+		t.Fatalf("PurgeExpired failed: %v", err)
+	}
+	if purged != 0 {
+		t.Errorf("expected 0 purged on empty DLQ, got %d", purged)
+	}
+}
+
 func TestDLQ_Size(t *testing.T) {
 	dlq := newTestDLQ(t, 10000, 24*time.Hour)
 
