@@ -1,0 +1,122 @@
+{{- if not (include "k8s4claw.useCertManager" .) }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "k8s4claw.fullname" . }}-cert-gen
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "k8s4claw.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-4"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "k8s4claw.fullname" . }}-cert-gen
+  labels:
+    {{- include "k8s4claw.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-4"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+rules:
+  - apiGroups: [""]
+    resources: [secrets]
+    verbs: [get, create, update, patch]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: [mutatingwebhookconfigurations, validatingwebhookconfigurations]
+    verbs: [get, update, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "k8s4claw.fullname" . }}-cert-gen
+  labels:
+    {{- include "k8s4claw.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-4"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "k8s4claw.fullname" . }}-cert-gen
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "k8s4claw.fullname" . }}-cert-gen
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "k8s4claw.fullname" . }}-cert-gen
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "k8s4claw.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-3"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "k8s4claw.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: cert-gen
+    spec:
+      serviceAccountName: {{ include "k8s4claw.fullname" . }}-cert-gen
+      restartPolicy: OnFailure
+      containers:
+        - name: cert-gen
+          image: registry.k8s.io/ingress-nginx/kube-webhook-certgen:v1.5.0
+          args:
+            - create
+            - --host={{ include "k8s4claw.webhookServiceName" . }},{{ include "k8s4claw.webhookServiceName" . }}.{{ .Release.Namespace }}.svc
+            - --namespace={{ .Release.Namespace }}
+            - --secret-name={{ include "k8s4claw.webhookCertSecretName" . }}
+            - --cert-name=tls.crt
+            - --key-name=tls.key
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "k8s4claw.fullname" . }}-cert-patch
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "k8s4claw.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "k8s4claw.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: cert-patch
+    spec:
+      serviceAccountName: {{ include "k8s4claw.fullname" . }}-cert-gen
+      restartPolicy: OnFailure
+      containers:
+        - name: cert-patch
+          image: registry.k8s.io/ingress-nginx/kube-webhook-certgen:v1.5.0
+          args:
+            - patch
+            - --namespace={{ .Release.Namespace }}
+            - --secret-name={{ include "k8s4claw.webhookCertSecretName" . }}
+            - --webhook-name={{ include "k8s4claw.fullname" . }}-mutating,{{ include "k8s4claw.fullname" . }}-validating
+            - --patch-mutating=true
+            - --patch-validating=true
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+{{- end }}
