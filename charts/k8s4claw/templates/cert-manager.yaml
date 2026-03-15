@@ -1,0 +1,32 @@
+{{- if include "k8s4claw.useCertManager" . }}
+{{- $issuerName := default (printf "%s-selfsigned" (include "k8s4claw.fullname" .)) .Values.webhook.certManager.issuerRef.name -}}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ $issuerName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "k8s4claw.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "k8s4claw.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "k8s4claw.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "k8s4claw.webhookCertSecretName" . }}
+  duration: 8760h
+  renewBefore: 720h
+  issuerRef:
+    kind: {{ .Values.webhook.certManager.issuerRef.kind }}
+    name: {{ $issuerName }}
+  dnsNames:
+    - {{ include "k8s4claw.webhookServiceName" . }}
+    - {{ include "k8s4claw.webhookServiceName" . }}.{{ .Release.Namespace }}
+    - {{ include "k8s4claw.webhookServiceName" . }}.{{ .Release.Namespace }}.svc
+    - {{ include "k8s4claw.webhookServiceName" . }}.{{ .Release.Namespace }}.svc.cluster.local
+{{- end }}
