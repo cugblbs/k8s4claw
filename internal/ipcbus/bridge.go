@@ -25,17 +25,23 @@ const (
 	RuntimePicoClaw RuntimeType = "picoclaw"
 )
 
+// BridgeConfig holds parameters for constructing a RuntimeBridge.
+type BridgeConfig struct {
+	GatewayPort int    // used by OpenClaw (WS), PicoClaw (TCP), ZeroClaw (SSE)
+	SocketPath  string // used by NanoClaw (UDS)
+}
+
 // NewBridge returns the appropriate [RuntimeBridge] for the given runtime.
-func NewBridge(rt RuntimeType, gatewayPort int) (RuntimeBridge, error) {
+func NewBridge(rt RuntimeType, cfg BridgeConfig) (RuntimeBridge, error) {
 	switch rt {
 	case RuntimeOpenClaw:
-		return NewWebSocketBridge(fmt.Sprintf("ws://localhost:%d", gatewayPort)), nil
+		return NewWebSocketBridge(fmt.Sprintf("ws://localhost:%d", cfg.GatewayPort)), nil
 	case RuntimeNanoClaw:
-		return NewUDSBridge(fmt.Sprintf("localhost:%d", gatewayPort)), nil
+		return NewUDSBridge(cfg.SocketPath), nil
 	case RuntimeZeroClaw:
-		return NewSSEBridge(fmt.Sprintf("http://localhost:%d", gatewayPort)), nil
+		return NewSSEBridge(fmt.Sprintf("http://localhost:%d", cfg.GatewayPort)), nil
 	case RuntimePicoClaw:
-		return NewTCPBridge(fmt.Sprintf("localhost:%d", gatewayPort)), nil
+		return NewTCPBridge(fmt.Sprintf("localhost:%d", cfg.GatewayPort)), nil
 	default:
 		return nil, fmt.Errorf("unsupported runtime type: %s", rt)
 	}

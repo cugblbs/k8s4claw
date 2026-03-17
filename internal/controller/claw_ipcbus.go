@@ -32,6 +32,14 @@ func injectIPCBusSidecar(claw *clawv1alpha1.Claw, podTemplate *corev1.PodTemplat
 		{Name: "WAL_DIR", Value: "/var/run/claw/wal"},
 	}
 
+	// NanoClaw uses a UDS socket path instead of a TCP gateway port.
+	if runtimeType == "nanoclaw" {
+		env = append(env, corev1.EnvVar{
+			Name:  "CLAW_RUNTIME_SOCKET",
+			Value: "/var/run/claw/runtime.sock",
+		})
+	}
+
 	sidecar := corev1.Container{
 		Name:  ipcBusSidecarName(),
 		Image: IPCBusImage,

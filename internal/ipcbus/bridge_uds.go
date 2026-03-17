@@ -3,31 +3,29 @@ package ipcbus
 import (
 	"context"
 	"fmt"
+	"net"
 )
 
-// UDSBridge implements [RuntimeBridge] over Unix Domain Sockets,
-// used by the NanoClaw runtime. Currently a stub.
+// UDSBridge implements [RuntimeBridge] over Unix Domain Sockets with
+// length-prefix framing, used by the NanoClaw runtime.
 type UDSBridge struct {
-	addr string
+	path string
+	streamBridge
 }
 
-// NewUDSBridge creates a stub UDS bridge targeting the given address.
-func NewUDSBridge(addr string) *UDSBridge {
-	return &UDSBridge{addr: addr}
+// NewUDSBridge creates a UDS bridge targeting the given socket path.
+func NewUDSBridge(path string) *UDSBridge {
+	return &UDSBridge{
+		path:         path,
+		streamBridge: newStreamBridge(),
+	}
 }
 
-func (b *UDSBridge) Connect(_ context.Context) error {
-	return fmt.Errorf("UDS bridge not yet implemented")
-}
-
-func (b *UDSBridge) Send(_ context.Context, _ *Message) error {
-	return fmt.Errorf("UDS bridge not yet implemented")
-}
-
-func (b *UDSBridge) Receive(_ context.Context) (<-chan *Message, error) {
-	return nil, fmt.Errorf("UDS bridge not yet implemented")
-}
-
-func (b *UDSBridge) Close() error {
+func (b *UDSBridge) Connect(ctx context.Context) error {
+	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", b.path)
+	if err != nil {
+		return fmt.Errorf("failed to dial unix %s: %w", b.path, err)
+	}
+	b.conn = conn
 	return nil
 }

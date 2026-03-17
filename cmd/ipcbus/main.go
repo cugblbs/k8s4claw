@@ -40,6 +40,7 @@ func runServe() error {
 	walDir := flag.String("wal-dir", envOr("WAL_DIR", "/var/run/claw/wal"), "WAL directory")
 	runtime := flag.String("runtime", envOr("CLAW_RUNTIME", "openclaw"), "claw runtime type")
 	gatewayPort := flag.Int("gateway-port", envOrInt("CLAW_GATEWAY_PORT", 18900), "gateway port")
+	runtimeSocket := flag.String("runtime-socket", envOr("CLAW_RUNTIME_SOCKET", "/var/run/claw/runtime.sock"), "runtime UDS socket path (NanoClaw)")
 	bufferSize := flag.Int("buffer-size", envOrInt("BUFFER_SIZE", 1024), "per-channel ring buffer size")
 	highWatermark := flag.Float64("high-watermark", 0.8, "ring buffer high watermark")
 	lowWatermark := flag.Float64("low-watermark", 0.3, "ring buffer low watermark")
@@ -75,7 +76,10 @@ func runServe() error {
 	}
 
 	// Init bridge.
-	bridge, err := ipcbus.NewBridge(ipcbus.RuntimeType(*runtime), *gatewayPort)
+	bridge, err := ipcbus.NewBridge(ipcbus.RuntimeType(*runtime), ipcbus.BridgeConfig{
+		GatewayPort: *gatewayPort,
+		SocketPath:  *runtimeSocket,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to create bridge: %w", err)
 	}

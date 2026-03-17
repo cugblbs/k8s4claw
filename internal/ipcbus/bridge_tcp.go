@@ -3,31 +3,29 @@ package ipcbus
 import (
 	"context"
 	"fmt"
+	"net"
 )
 
-// TCPBridge implements [RuntimeBridge] over raw TCP,
-// used by the PicoClaw runtime. Currently a stub.
+// TCPBridge implements [RuntimeBridge] over raw TCP with length-prefix
+// framing, used by the PicoClaw runtime.
 type TCPBridge struct {
 	addr string
+	streamBridge
 }
 
-// NewTCPBridge creates a stub TCP bridge targeting the given address.
+// NewTCPBridge creates a TCP bridge targeting the given host:port address.
 func NewTCPBridge(addr string) *TCPBridge {
-	return &TCPBridge{addr: addr}
+	return &TCPBridge{
+		addr:         addr,
+		streamBridge: newStreamBridge(),
+	}
 }
 
-func (b *TCPBridge) Connect(_ context.Context) error {
-	return fmt.Errorf("TCP bridge not yet implemented")
-}
-
-func (b *TCPBridge) Send(_ context.Context, _ *Message) error {
-	return fmt.Errorf("TCP bridge not yet implemented")
-}
-
-func (b *TCPBridge) Receive(_ context.Context) (<-chan *Message, error) {
-	return nil, fmt.Errorf("TCP bridge not yet implemented")
-}
-
-func (b *TCPBridge) Close() error {
+func (b *TCPBridge) Connect(ctx context.Context) error {
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", b.addr)
+	if err != nil {
+		return fmt.Errorf("failed to dial tcp %s: %w", b.addr, err)
+	}
+	b.conn = conn
 	return nil
 }
