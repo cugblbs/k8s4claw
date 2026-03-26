@@ -71,13 +71,16 @@ All commits must be signed off per the [Developer Certificate of Origin](DCO). U
 
 ## Adding a New Runtime
 
-Implement the `RuntimeAdapter` interface in `internal/runtime/`:
+Implement the `RuntimeAdapter` interface in `internal/runtime/`. See `ironclaw.go` for a recent example.
 
-1. Create `internal/runtime/yourruntime.go`
-2. Implement `RuntimeBuilder` + `RuntimeValidator`
-3. Register in the adapter registry
-4. Add a sample CR in `config/samples/`
-5. Add tests
+1. Add a `RuntimeType` constant in `api/v1alpha1/common_types.go` (update kubebuilder enum marker)
+2. Create `internal/runtime/yourruntime.go` implementing `RuntimeAdapter` (`RuntimeBuilder` + `RuntimeValidator`)
+3. Add `ImageForRuntime` case in `internal/registry/resolver.go`
+4. Register adapter in `cmd/operator/main.go` and `internal/controller/suite_test.go`
+5. Add test case to `internal/runtime/adapter_test.go` (`allAdapterTests()`)
+6. Add to E2E multi-runtime test in `internal/controller/e2e_lifecycle_test.go`
+7. Run `make generate manifests` to regenerate CRDs
+8. Add a sample CR in `config/samples/`
 
 ## IPC Bus Development
 
