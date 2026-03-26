@@ -265,7 +265,13 @@ func TestAdapter_PodTemplate(t *testing.T) {
 func TestAdapter_Validate(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	spec := &v1alpha1.ClawSpec{}
+
+	// Provide a spec with credentials so OpenClaw validation passes.
+	spec := &v1alpha1.ClawSpec{
+		Credentials: &v1alpha1.CredentialSpec{
+			SecretRef: &corev1.LocalObjectReference{Name: "test-secret"},
+		},
+	}
 
 	for _, tt := range allAdapterTests() {
 		t.Run(tt.name, func(t *testing.T) {

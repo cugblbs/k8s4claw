@@ -24,6 +24,9 @@ func baseClaw() *clawv1alpha1.Claw {
 	return &clawv1alpha1.Claw{
 		Spec: clawv1alpha1.ClawSpec{
 			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Credentials: &clawv1alpha1.CredentialSpec{
+				SecretRef: &corev1.LocalObjectReference{Name: "test-secret"},
+			},
 		},
 	}
 }
@@ -321,14 +324,10 @@ func searchString(s, substr string) bool {
 }
 
 func TestValidateAutoUpdate_InvalidConstraint(t *testing.T) {
-	claw := &clawv1alpha1.Claw{
-		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
-			AutoUpdate: &clawv1alpha1.AutoUpdateSpec{
-				Enabled:           true,
-				VersionConstraint: "not-a-semver",
-			},
-		},
+	claw := baseClaw()
+	claw.Spec.AutoUpdate = &clawv1alpha1.AutoUpdateSpec{
+		Enabled:           true,
+		VersionConstraint: "not-a-semver",
 	}
 	v := &ClawValidator{Registry: newRegistry()}
 	_, err := v.ValidateCreate(context.Background(), claw)
@@ -338,14 +337,10 @@ func TestValidateAutoUpdate_InvalidConstraint(t *testing.T) {
 }
 
 func TestValidateAutoUpdate_InvalidSchedule(t *testing.T) {
-	claw := &clawv1alpha1.Claw{
-		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
-			AutoUpdate: &clawv1alpha1.AutoUpdateSpec{
-				Enabled:  true,
-				Schedule: "not-a-cron",
-			},
-		},
+	claw := baseClaw()
+	claw.Spec.AutoUpdate = &clawv1alpha1.AutoUpdateSpec{
+		Enabled:  true,
+		Schedule: "not-a-cron",
 	}
 	v := &ClawValidator{Registry: newRegistry()}
 	_, err := v.ValidateCreate(context.Background(), claw)
@@ -368,14 +363,10 @@ func TestValidateAutoUpdate_HealthTimeoutRange(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			claw := &clawv1alpha1.Claw{
-				Spec: clawv1alpha1.ClawSpec{
-					Runtime: clawv1alpha1.RuntimeOpenClaw,
-					AutoUpdate: &clawv1alpha1.AutoUpdateSpec{
-						Enabled:       true,
-						HealthTimeout: tt.timeout,
-					},
-				},
+			claw := baseClaw()
+			claw.Spec.AutoUpdate = &clawv1alpha1.AutoUpdateSpec{
+				Enabled:       true,
+				HealthTimeout: tt.timeout,
 			}
 			v := &ClawValidator{Registry: newRegistry()}
 			_, err := v.ValidateCreate(context.Background(), claw)
@@ -387,14 +378,10 @@ func TestValidateAutoUpdate_HealthTimeoutRange(t *testing.T) {
 }
 
 func TestValidateAutoUpdate_MaxRollbacksPositive(t *testing.T) {
-	claw := &clawv1alpha1.Claw{
-		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
-			AutoUpdate: &clawv1alpha1.AutoUpdateSpec{
-				Enabled:      true,
-				MaxRollbacks: -1,
-			},
-		},
+	claw := baseClaw()
+	claw.Spec.AutoUpdate = &clawv1alpha1.AutoUpdateSpec{
+		Enabled:      true,
+		MaxRollbacks: -1,
 	}
 	v := &ClawValidator{Registry: newRegistry()}
 	_, err := v.ValidateCreate(context.Background(), claw)
@@ -404,14 +391,10 @@ func TestValidateAutoUpdate_MaxRollbacksPositive(t *testing.T) {
 }
 
 func TestValidateAutoUpdate_Disabled_NoValidation(t *testing.T) {
-	claw := &clawv1alpha1.Claw{
-		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
-			AutoUpdate: &clawv1alpha1.AutoUpdateSpec{
-				Enabled:           false,
-				VersionConstraint: "invalid",
-			},
-		},
+	claw := baseClaw()
+	claw.Spec.AutoUpdate = &clawv1alpha1.AutoUpdateSpec{
+		Enabled:           false,
+		VersionConstraint: "invalid",
 	}
 	v := &ClawValidator{Registry: newRegistry()}
 	_, err := v.ValidateCreate(context.Background(), claw)
