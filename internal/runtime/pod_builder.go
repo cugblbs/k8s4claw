@@ -20,8 +20,8 @@ const (
 	ConfigModePassthrough ConfigMergeMode = "passthrough"
 )
 
-// InitContainerImage is the default claw-init container image.
-// TODO(release): Pin to operator version at build time via ldflags.
+// InitContainerImage is the claw-init container image.
+// Set at build time via: -ldflags "-X github.com/Prismer-AI/k8s4claw/internal/runtime.InitContainerImage=ghcr.io/prismer-ai/claw-init:v1.2.3"
 var InitContainerImage = "ghcr.io/prismer-ai/claw-init:latest"
 
 // RuntimeSpec defines the runtime-specific pod configuration provided by each adapter.

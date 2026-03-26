@@ -72,10 +72,20 @@ func (a *IronClawAdapter) GracefulShutdownSeconds() int32 {
 	return 30
 }
 
-func (a *IronClawAdapter) Validate(_ context.Context, _ *v1alpha1.ClawSpec) field.ErrorList {
-	return nil
+func (a *IronClawAdapter) Validate(_ context.Context, spec *v1alpha1.ClawSpec) field.ErrorList {
+	var allErrs field.ErrorList
+
+	// IronClaw requires credentials (LLM API keys) to function.
+	if !hasCredentials(spec) {
+		allErrs = append(allErrs, field.Required(
+			field.NewPath("spec", "credentials"),
+			"IronClaw requires credentials (secretRef, externalSecret, or keys)",
+		))
+	}
+
+	return allErrs
 }
 
-func (a *IronClawAdapter) ValidateUpdate(_ context.Context, _, _ *v1alpha1.ClawSpec) field.ErrorList {
-	return nil
+func (a *IronClawAdapter) ValidateUpdate(_ context.Context, oldSpec, newSpec *v1alpha1.ClawSpec) field.ErrorList {
+	return validatePersistenceUpdate(oldSpec, newSpec)
 }

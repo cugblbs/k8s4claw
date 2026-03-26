@@ -1,13 +1,16 @@
 .PHONY: all build test lint fmt vet generate manifests docker-build docker-push install uninstall run
 
 IMG ?= ghcr.io/prismer-ai/k8s4claw:latest
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+INIT_IMG ?= ghcr.io/prismer-ai/claw-init:$(VERSION)
+LDFLAGS := -X github.com/Prismer-AI/k8s4claw/internal/runtime.InitContainerImage=$(INIT_IMG)
 
 all: fmt vet build
 
 ##@ Development
 
 build: ## Build operator binary.
-	go build -o bin/operator ./cmd/operator/
+	go build -ldflags "$(LDFLAGS)" -o bin/operator ./cmd/operator/
 
 build-ipcbus: ## Build IPC Bus binary.
 	go build -o bin/ipcbus ./cmd/ipcbus/

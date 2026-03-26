@@ -17,6 +17,7 @@ func newRegistry() *clawruntime.Registry {
 	reg.Register(clawv1alpha1.RuntimeNanoClaw, &clawruntime.NanoClawAdapter{})
 	reg.Register(clawv1alpha1.RuntimeZeroClaw, &clawruntime.ZeroClawAdapter{})
 	reg.Register(clawv1alpha1.RuntimePicoClaw, &clawruntime.PicoClawAdapter{})
+	reg.Register(clawv1alpha1.RuntimeIronClaw, &clawruntime.IronClawAdapter{})
 	return reg
 }
 

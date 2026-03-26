@@ -5,8 +5,11 @@ WORKDIR /workspace
 COPY go.mod go.sum ./
 RUN go mod download
 
+ARG VERSION=dev
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -a -o operator ./cmd/operator/
+RUN CGO_ENABLED=0 GOOS=linux go build -a \
+    -ldflags "-X github.com/Prismer-AI/k8s4claw/internal/runtime.InitContainerImage=ghcr.io/prismer-ai/claw-init:${VERSION}" \
+    -o operator ./cmd/operator/
 
 FROM gcr.io/distroless/static:nonroot
 
