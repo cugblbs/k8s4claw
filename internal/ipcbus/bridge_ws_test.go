@@ -20,7 +20,7 @@ func TestWebSocketBridge_SendReceive(t *testing.T) {
 			t.Logf("accept error: %v", err)
 			return
 		}
-		defer conn.Close(websocket.StatusNormalClosure, "done")
+		defer func() { _ = conn.Close(websocket.StatusNormalClosure, "done") }()
 
 		for {
 			typ, data, err := conn.Read(r.Context())
@@ -46,7 +46,7 @@ func TestWebSocketBridge_SendReceive(t *testing.T) {
 	if err := bridge.Connect(ctx); err != nil {
 		t.Fatalf("failed to connect: %v", err)
 	}
-	defer bridge.Close()
+	defer func() { _ = bridge.Close() }()
 
 	// Start receiving.
 	ch, err := bridge.Receive(ctx)

@@ -22,7 +22,7 @@ func TestServer_RegisterAndSend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create WAL: %v", err)
 	}
-	defer wal.Close()
+	defer func() { _ = wal.Close() }()
 
 	router := NewRouter(RouterConfig{
 		WAL:    wal,
@@ -52,7 +52,7 @@ func TestServer_RegisterAndSend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect to UDS server: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send TypeRegister message.
 	regMsg := NewMessage(TypeRegister, "test-channel", nil)
@@ -90,7 +90,7 @@ func TestServer_RegisterAndSend(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	// Close client connection so the server's read loop exits, then cancel.
-	conn.Close()
+	_ = conn.Close()
 	cancel()
 
 	select {
@@ -116,7 +116,7 @@ func TestServer_SocketPermissions(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	go func() {
-		srv.Start(ctx)
+		_ = srv.Start(ctx)
 	}()
 
 	// Wait for socket to appear.
@@ -155,7 +155,7 @@ func TestServer_RejectNonRegisterFirst(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		srv.Start(ctx)
+		_ = srv.Start(ctx)
 	}()
 
 	// Wait for socket.
@@ -172,7 +172,7 @@ func TestServer_RejectNonRegisterFirst(t *testing.T) {
 	if conn == nil {
 		t.Fatalf("failed to connect to UDS server: %v", connErr)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Send a non-register message first.
 	badMsg := NewMessage(TypeMessage, "bad-channel", nil)
@@ -181,7 +181,7 @@ func TestServer_RejectNonRegisterFirst(t *testing.T) {
 	}
 
 	// Server should close the connection — ReadMessage should fail.
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	_, readErr := ReadMessage(conn)
 	if readErr == nil {
 		t.Fatal("expected error reading from rejected connection, got nil")
@@ -207,7 +207,7 @@ func TestServer_HeartbeatACK(t *testing.T) {
 	defer cancel()
 
 	go func() {
-		srv.Start(ctx)
+		_ = srv.Start(ctx)
 	}()
 
 	// Connect and register.
@@ -224,7 +224,7 @@ func TestServer_HeartbeatACK(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	regMsg := NewMessage(TypeRegister, "hb-channel", nil)
 	if err := WriteMessage(conn, regMsg); err != nil {
@@ -243,7 +243,7 @@ func TestServer_HeartbeatACK(t *testing.T) {
 	}
 
 	// Read heartbeat ACK.
-	conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	ack, err := ReadMessage(conn)
 	if err != nil {
 		t.Fatalf("failed to read heartbeat ACK: %v", err)
@@ -266,13 +266,13 @@ func TestIntegration_SidecarToRouterWithWALAndDLQ(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create WAL: %v", err)
 	}
-	defer wal.Close()
+	defer func() { _ = wal.Close() }()
 
 	dlq, err := NewDLQ(dlqPath, 100, 24*time.Hour)
 	if err != nil {
 		t.Fatalf("failed to create DLQ: %v", err)
 	}
-	defer dlq.Close()
+	defer func() { _ = dlq.Close() }()
 
 	router := NewRouter(RouterConfig{
 		WAL:           wal,
@@ -306,7 +306,7 @@ func TestIntegration_SidecarToRouterWithWALAndDLQ(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to connect to UDS server: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Register on "test-ch".
 	regMsg := NewMessage(TypeRegister, "test-ch", nil)
@@ -348,7 +348,7 @@ func TestIntegration_SidecarToRouterWithWALAndDLQ(t *testing.T) {
 	}
 
 	// Close client connection so the server's read loop exits, then cancel.
-	conn.Close()
+	_ = conn.Close()
 	cancel()
 
 	select {

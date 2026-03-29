@@ -18,7 +18,7 @@ func TestWAL_AppendAndPending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	msg := newTestMessage("ch1")
 	if err := w.Append(msg); err != nil {
@@ -49,7 +49,7 @@ func TestWAL_Complete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	msg := newTestMessage("ch1")
 	if err := w.Append(msg); err != nil {
@@ -94,7 +94,7 @@ func TestWAL_Recovery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL (recovery): %v", err)
 	}
-	defer w2.Close()
+	defer func() { _ = w2.Close() }()
 
 	pending := w2.PendingEntries()
 	if len(pending) != 1 {
@@ -161,7 +161,7 @@ func TestWAL_Compact(t *testing.T) {
 			infoBefore.Size(), infoAfter.Size())
 	}
 
-	w.Close()
+	_ = w.Close()
 }
 
 func TestWAL_NeedsCompaction_BelowThreshold(t *testing.T) {
@@ -170,7 +170,7 @@ func TestWAL_NeedsCompaction_BelowThreshold(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	// A fresh WAL with a few entries should not need compaction.
 	msg := newTestMessage("ch1")
@@ -192,7 +192,7 @@ func TestWAL_NeedsCompaction_AboveThreshold(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	// Write enough data to exceed the 10 MB threshold.
 	// Build a valid JSON string payload of ~10KB.
@@ -226,7 +226,7 @@ func TestWAL_MarkDLQ(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	msg := newTestMessage("ch1")
 	if err := w.Append(msg); err != nil {
@@ -249,7 +249,7 @@ func TestWAL_MarkDLQ_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	err = w.MarkDLQ("nonexistent-id")
 	if err == nil {
@@ -263,7 +263,7 @@ func TestWAL_Complete_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	err = w.Complete("nonexistent-id")
 	if err == nil {
@@ -277,7 +277,7 @@ func TestWAL_IncrementAttempts_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	_, err = w.IncrementAttempts("nonexistent-id")
 	if err == nil {
@@ -314,7 +314,7 @@ func TestWAL_Recovery_WithDLQ(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL (recovery): %v", err)
 	}
-	defer w2.Close()
+	defer func() { _ = w2.Close() }()
 
 	pending := w2.PendingEntries()
 	if len(pending) != 1 {
@@ -331,7 +331,7 @@ func TestWAL_IncrementAttempts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	msg := newTestMessage("ch1")
 	if err := w.Append(msg); err != nil {

@@ -15,7 +15,7 @@ func TestShutdownOrchestrator_Execute(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create WAL: %v", err)
 	}
-	defer wal.Close()
+	defer func() { _ = wal.Close() }()
 
 	router := NewRouter(RouterConfig{WAL: wal, Logger: logr.Discard()})
 	orchestrator := NewShutdownOrchestrator(router, wal, nil, logr.Discard())

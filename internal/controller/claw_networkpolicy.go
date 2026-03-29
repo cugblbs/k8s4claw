@@ -77,7 +77,7 @@ func buildNetworkPolicy(claw *clawv1alpha1.Claw, gatewayPort int) *networkingv1.
 	protocolTCP := corev1.ProtocolTCP
 	dnsPort := intstr.FromInt32(53)
 	httpsPort := intstr.FromInt32(443)
-	gwPort := intstr.FromInt32(int32(gatewayPort))
+	gwPort := intstr.FromInt32(int32(gatewayPort)) //nolint:gosec // safe: gatewayPort is a small port number
 
 	// Egress rules: DNS + HTTPS always allowed.
 	egressRules := []networkingv1.NetworkPolicyEgressRule{

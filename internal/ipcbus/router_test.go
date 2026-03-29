@@ -15,12 +15,12 @@ import (
 
 // mockBridge implements RuntimeBridge for testing.
 type mockBridge struct {
-	mu       sync.Mutex
-	sent     []*Message
-	recvCh   chan *Message
-	sendErr  error
-	recvErr  error
-	closed   bool
+	mu      sync.Mutex
+	sent    []*Message
+	recvCh  chan *Message
+	sendErr error
+	recvErr error
+	closed  bool
 }
 
 func newMockBridge() *mockBridge {
@@ -90,7 +90,7 @@ func (w *collectWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (w *collectWriter) Read([]byte) (int, error)        { return 0, fmt.Errorf("not implemented") }
+func (w *collectWriter) Read([]byte) (int, error)         { return 0, fmt.Errorf("not implemented") }
 func (w *collectWriter) Close() error                     { return nil }
 func (w *collectWriter) LocalAddr() net.Addr              { return nil }
 func (w *collectWriter) RemoteAddr() net.Addr             { return nil }
@@ -190,7 +190,7 @@ func TestRouter_ReplayWAL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer wal.Close()
+	defer func() { _ = wal.Close() }()
 
 	bridge := newMockBridge()
 	router := NewRouter(RouterConfig{
@@ -238,7 +238,7 @@ func TestRouter_ReplayWAL_BridgeSendFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer wal.Close()
+	defer func() { _ = wal.Close() }()
 
 	bridge := newMockBridge()
 	bridge.setSendErr(fmt.Errorf("bridge down"))
@@ -299,14 +299,14 @@ func TestRouter_scheduleRetry_PromoteToDLQ(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer wal.Close()
+	defer func() { _ = wal.Close() }()
 
 	dlqPath := filepath.Join(t.TempDir(), "dlq.db")
 	dlq, err := NewDLQ(dlqPath, 100, 24*time.Hour)
 	if err != nil {
 		t.Fatalf("NewDLQ: %v", err)
 	}
-	defer dlq.Close()
+	defer func() { _ = dlq.Close() }()
 
 	bridge := newMockBridge()
 	bridge.setSendErr(fmt.Errorf("bridge always fails"))
@@ -367,7 +367,7 @@ func TestRouter_scheduleRetry_BelowMax(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer wal.Close()
+	defer func() { _ = wal.Close() }()
 
 	router := NewRouter(RouterConfig{
 		WAL:    wal,
@@ -458,7 +458,7 @@ func TestRouter_HandleInbound_DataMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer wal.Close()
+	defer func() { _ = wal.Close() }()
 
 	bridge := newMockBridge()
 	router := NewRouter(RouterConfig{
@@ -495,7 +495,7 @@ func TestRouter_HandleInbound_BridgeFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer wal.Close()
+	defer func() { _ = wal.Close() }()
 
 	bridge := newMockBridge()
 	bridge.setSendErr(fmt.Errorf("bridge down"))
@@ -525,7 +525,7 @@ func TestRouter_HandleInbound_NilBridge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL: %v", err)
 	}
-	defer wal.Close()
+	defer func() { _ = wal.Close() }()
 
 	router := NewRouter(RouterConfig{
 		WAL:    wal,

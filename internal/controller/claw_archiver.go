@@ -1,8 +1,6 @@
 package controller
 
 import (
-	"fmt"
-
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/ptr"
@@ -64,10 +62,10 @@ func injectArchiverSidecar(claw *clawv1alpha1.Claw, podTemplate *corev1.PodTempl
 	}
 
 	sidecar := corev1.Container{
-		Name:    "archive-sidecar",
-		Image:   ArchiverImage,
-		Args:    args,
-		Env:     env,
+		Name:  "archive-sidecar",
+		Image: ArchiverImage,
+		Args:  args,
+		Env:   env,
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{
 				corev1.ResourceCPU:    resource.MustParse("50m"),
@@ -113,19 +111,11 @@ func injectArchiverIfNeeded(claw *clawv1alpha1.Claw, podTemplate *corev1.PodTemp
 	}
 
 	// Check if already injected.
-	for _, c := range podTemplate.Spec.InitContainers {
-		if c.Name == archiverSidecarName() {
+	for i := range podTemplate.Spec.InitContainers {
+		if podTemplate.Spec.InitContainers[i].Name == archiverSidecarName() {
 			return
 		}
 	}
 
 	injectArchiverSidecar(claw, podTemplate)
-}
-
-// formatMountPath returns the mount path for the output volume, used for reference.
-func formatMountPath(claw *clawv1alpha1.Claw) string {
-	if claw.Spec.Persistence != nil && claw.Spec.Persistence.Output != nil {
-		return claw.Spec.Persistence.Output.MountPath
-	}
-	return fmt.Sprintf("/data/output/%s", claw.Name)
 }

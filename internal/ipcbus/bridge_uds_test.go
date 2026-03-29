@@ -16,7 +16,7 @@ func TestUDSBridge_SendReceive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to listen: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	// Echo server.
 	go func() {
@@ -24,7 +24,7 @@ func TestUDSBridge_SendReceive(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		for {
 			msg, err := ReadMessage(conn)
@@ -45,7 +45,7 @@ func TestUDSBridge_SendReceive(t *testing.T) {
 	if err := bridge.Connect(ctx); err != nil {
 		t.Fatalf("failed to connect: %v", err)
 	}
-	defer bridge.Close()
+	defer func() { _ = bridge.Close() }()
 
 	ch, err := bridge.Receive(ctx)
 	if err != nil {
@@ -79,7 +79,7 @@ func TestUDSBridge_ConnectFailure(t *testing.T) {
 	defer cancel()
 
 	if err := bridge.Connect(ctx); err == nil {
-		bridge.Close()
+		_ = bridge.Close()
 		t.Fatal("expected error connecting to nonexistent socket")
 	}
 }

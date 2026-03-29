@@ -76,7 +76,7 @@ func writeMessage(w io.Writer, msg *message) error {
 		return fmt.Errorf("message size %d exceeds maximum %d", len(data), maxMessageSize)
 	}
 	frame := make([]byte, frameHeaderSize+len(data))
-	binary.BigEndian.PutUint32(frame, uint32(len(data)))
+	binary.BigEndian.PutUint32(frame, uint32(len(data))) //nolint:gosec // safe: len(data) bounded by maxMessageSize (16 MiB)
 	copy(frame[frameHeaderSize:], data)
 	if _, err := w.Write(frame); err != nil {
 		return fmt.Errorf("failed to write frame: %w", err)

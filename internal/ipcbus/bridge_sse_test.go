@@ -55,7 +55,7 @@ func sseEchoServer(t *testing.T) (*httptest.Server, <-chan struct{}) {
 		for {
 			select {
 			case data := <-ch:
-				fmt.Fprintf(w, "data: %s\n\n", data)
+				_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
 				flusher.Flush()
 			case <-r.Context().Done():
 				return
@@ -102,7 +102,7 @@ func TestSSEBridge_SendReceive(t *testing.T) {
 	if err := bridge.Connect(ctx); err != nil {
 		t.Fatalf("failed to connect: %v", err)
 	}
-	defer bridge.Close()
+	defer func() { _ = bridge.Close() }()
 
 	ch, err := bridge.Receive(ctx)
 	if err != nil {
@@ -146,7 +146,7 @@ func TestSSEBridge_ConnectFailure(t *testing.T) {
 	defer cancel()
 
 	if err := bridge.Connect(ctx); err == nil {
-		bridge.Close()
+		_ = bridge.Close()
 		t.Fatal("expected error connecting to unreachable server")
 	}
 }

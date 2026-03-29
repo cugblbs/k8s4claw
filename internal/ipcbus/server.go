@@ -60,8 +60,8 @@ func (s *Server) Start(ctx context.Context) error {
 	s.listener = ln
 
 	// Make socket world-accessible so sidecars in different containers can connect.
-	if err := os.Chmod(s.socketPath, 0o777); err != nil {
-		ln.Close()
+	if err := os.Chmod(s.socketPath, 0o777); err != nil { //nolint:gosec // G302: world-accessible socket required for cross-container sidecar communication
+		_ = ln.Close()
 		return fmt.Errorf("failed to chmod socket: %w", err)
 	}
 
@@ -70,7 +70,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// Close listener when context is cancelled.
 	go func() {
 		<-ctx.Done()
-		ln.Close()
+		_ = ln.Close()
 	}()
 
 	for {
@@ -98,7 +98,7 @@ func (s *Server) Start(ctx context.Context) error {
 // be a TypeRegister; after successful registration an ACK is sent back and
 // the connection enters a read loop forwarding messages to the router.
 func (s *Server) handleConn(ctx context.Context, conn net.Conn) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// First message must be registration.
 	msg, err := ReadMessage(conn)

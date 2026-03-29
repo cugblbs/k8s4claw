@@ -31,16 +31,21 @@ func loadConfig() (*webhookConfig, error) {
 }
 
 func main() {
-	logger, err := newLogger()
-	if err != nil {
+	if err := mainRun(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
+	}
+}
+
+func mainRun() error {
+	logger, err := newLogger()
+	if err != nil {
+		return err
 	}
 
 	cfg, err := loadConfig()
 	if err != nil {
-		logger.Error(err, "failed to parse config")
-		os.Exit(1)
+		return fmt.Errorf("failed to parse config: %w", err)
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -48,10 +53,9 @@ func main() {
 
 	client, err := channel.Connect(ctx, channel.WithLogger(logger))
 	if err != nil {
-		logger.Error(err, "failed to connect to IPC Bus")
-		os.Exit(1)
+		return fmt.Errorf("failed to connect to IPC Bus: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	mode := os.Getenv("CHANNEL_MODE")
 
@@ -59,15 +63,11 @@ func main() {
 	if needsOutbound(mode, cfg.TargetURL) {
 		outCh, err = client.Receive(ctx)
 		if err != nil {
-			logger.Error(err, "failed to start receiving")
-			os.Exit(1)
+			return fmt.Errorf("failed to start receiving: %w", err)
 		}
 	}
 
-	if err := run(ctx, cfg, mode, client, client.BufferedCount, outCh, logger); err != nil {
-		logger.Error(err, "server error")
-		os.Exit(1)
-	}
+	return run(ctx, cfg, mode, client, client.BufferedCount, outCh, logger)
 }
 
 // needsOutbound returns true if the mode requires outbound posting.
@@ -99,13 +99,13 @@ func run(ctx context.Context, cfg *webhookConfig, mode string, s sender, buffere
 		}
 	}
 
-	srv := &http.Server{Handler: mux}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
-		srv.Shutdown(shutdownCtx)
+		_ = srv.Shutdown(shutdownCtx)
 	}()
 
 	logger.Info("webhook sidecar starting", "addr", ln.Addr().String(), "mode", mode)

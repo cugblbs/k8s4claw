@@ -51,7 +51,7 @@ func (s *mockIPCServer) start(t *testing.T) {
 }
 
 func (s *mockIPCServer) handleConn(conn net.Conn) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Read registration.
 	reg, err := readMessage(conn)
@@ -94,11 +94,11 @@ func (s *mockIPCServer) handleConn(conn net.Conn) {
 
 func (s *mockIPCServer) close() {
 	if s.listener != nil {
-		s.listener.Close()
+		_ = s.listener.Close()
 	}
 	s.mu.Lock()
 	for _, conn := range s.conns {
-		conn.Close()
+		_ = conn.Close()
 	}
 	s.conns = nil
 	s.mu.Unlock()
@@ -132,7 +132,7 @@ func TestClient_ConnectAndSend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	payload := json.RawMessage(`{"text":"hello"}`)
 	if err := c.Send(ctx, payload); err != nil {
@@ -172,7 +172,7 @@ func TestClient_Receive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	ch, err := c.Receive(ctx)
 	if err != nil {
@@ -240,7 +240,7 @@ func TestClient_BackpressureSlowDown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	// Send a message to trigger the server to send slow_down.
 	if err := c.Send(ctx, json.RawMessage(`{"trigger":"1"}`)); err != nil {
@@ -313,7 +313,7 @@ func TestClient_BackpressureSlowDown_ContextCancel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	// Trigger slow_down.
 	if err := c.Send(ctx, json.RawMessage(`{"trigger":"1"}`)); err != nil {
@@ -375,7 +375,7 @@ func TestClient_BufferFullOnSend(t *testing.T) {
 		t.Fatal("expected error when buffer is full")
 	}
 
-	c.Close()
+	_ = c.Close()
 }
 
 func TestClient_HandleMessage_Shutdown(t *testing.T) {
@@ -433,7 +433,7 @@ func TestClient_HandleMessage_InboundMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	ch, _ := c.Receive(ctx)
 
@@ -475,7 +475,7 @@ func TestClient_HandleMessage_Resume(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	// Trigger both messages.
 	_ = c.Send(ctx, json.RawMessage(`{"trigger":"1"}`))
@@ -508,7 +508,7 @@ func TestClient_Heartbeat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	// Wait for at least 2 heartbeat intervals.
 	time.Sleep(350 * time.Millisecond)
@@ -591,7 +591,7 @@ func TestClient_ReplayBuffer(t *testing.T) {
 	if err != nil {
 		// Socket path may differ; just verify buffer state.
 		t.Logf("dial failed (expected if socket path changed): %v", err)
-		c.Close()
+		_ = c.Close()
 		return
 	}
 
@@ -607,7 +607,7 @@ func TestClient_ReplayBuffer(t *testing.T) {
 		t.Errorf("server received %d messages, want at least 3", len(msgs))
 	}
 
-	c.Close()
+	_ = c.Close()
 }
 
 func TestClient_BusDownBuffering(t *testing.T) {
@@ -658,5 +658,5 @@ func TestClient_BusDownBuffering(t *testing.T) {
 		t.Fatalf("BufferedCount = %d, want 1", c.BufferedCount())
 	}
 
-	c.Close()
+	_ = c.Close()
 }

@@ -12,7 +12,7 @@ import (
 func TestListTags(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v2/prismer-ai/k8s4claw-openclaw/tags/list", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"name": "prismer-ai/k8s4claw-openclaw",
 			"tags": []string{"1.0.0", "1.1.0", "1.2.0", "latest", "sha-abc123"},
 		})
@@ -96,7 +96,7 @@ func TestCachedResolver(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v2/test/repo/tags/list", func(w http.ResponseWriter, r *http.Request) {
 		callCount++
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"tags": []string{"1.0.0", "1.1.0"},
 		})
 	})
@@ -129,7 +129,7 @@ func TestCachedResolver(t *testing.T) {
 func TestTokenExchange(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]string{
+		_ = json.NewEncoder(w).Encode(map[string]string{
 			"token": "test-token-123",
 		})
 	})
@@ -139,7 +139,7 @@ func TestTokenExchange(t *testing.T) {
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]any{
+		_ = json.NewEncoder(w).Encode(map[string]any{
 			"tags": []string{"1.0.0"},
 		})
 	})

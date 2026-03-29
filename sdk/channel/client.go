@@ -94,21 +94,21 @@ func (c *Client) dial(ctx context.Context) error {
 	// Send registration.
 	reg := newMessage(typeRegister, c.cfg.channelName, nil)
 	if err := writeMessage(conn, reg); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("failed to send registration: %w", err)
 	}
 
 	// Wait for ACK with timeout.
-	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	ack, err := readMessage(conn)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("failed to read registration ACK: %w", err)
 	}
-	conn.SetReadDeadline(time.Time{})
+	_ = conn.SetReadDeadline(time.Time{})
 
 	if ack.Type != typeAck || ack.CorrelationID != reg.ID {
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("unexpected registration response: type=%s correlationID=%s", ack.Type, ack.CorrelationID)
 	}
 
@@ -207,7 +207,7 @@ func (c *Client) Close() error {
 		close(c.done)
 		c.mu.Lock()
 		if c.conn != nil {
-			c.conn.Close()
+			_ = c.conn.Close()
 		}
 		c.mu.Unlock()
 		close(c.inbound)
@@ -270,7 +270,7 @@ func (c *Client) handleMessage(msg *message) {
 
 	case typeShutdown:
 		c.cfg.logger.Info("shutdown signal received from IPC Bus")
-		c.Close()
+		_ = c.Close()
 
 	case typeAck, typeNack, typeHeartbeat:
 		// Control messages — no action needed in read loop.
@@ -323,7 +323,7 @@ func (c *Client) markDisconnected() {
 	defer c.mu.Unlock()
 	c.connected = false
 	if c.conn != nil {
-		c.conn.Close()
+		_ = c.conn.Close()
 		c.conn = nil
 	}
 }

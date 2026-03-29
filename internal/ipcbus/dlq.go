@@ -48,7 +48,7 @@ func NewDLQ(path string, maxSize int, ttl time.Duration) (*DLQ, error) {
 		}
 		return nil
 	}); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, err
 	}
 
@@ -150,7 +150,7 @@ func (d *DLQ) List() ([]*DLQEntry, error) {
 // Size returns the number of entries in the DLQ.
 func (d *DLQ) Size() int {
 	var n int
-	d.db.View(func(tx *bolt.Tx) error {
+	_ = d.db.View(func(tx *bolt.Tx) error {
 		n = tx.Bucket(bucketMessages).Stats().KeyN
 		return nil
 	})

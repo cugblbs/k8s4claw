@@ -51,7 +51,7 @@ func (r *ClawReconciler) ensureRole(ctx context.Context, claw *clawv1alpha1.Claw
 	}
 
 	if !metav1.IsControlledBy(&existing, claw) {
-		return fmt.Errorf("Role %s/%s already exists and is not owned by this Claw", existing.Namespace, existing.Name)
+		return fmt.Errorf("role %s/%s already exists and is not owned by this Claw", existing.Namespace, existing.Name)
 	}
 
 	existing.Labels = desired.Labels

@@ -745,7 +745,7 @@ func TestRun_ServeError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
-	ln.Close() // closed listener will cause Serve to fail
+	_ = ln.Close() // closed listener will cause Serve to fail
 
 	runErr := run(context.Background(), cfg, "inbound", &mockSender{}, func() int { return 0 }, nil, logr.Discard(), runOpts{listener: ln})
 	if runErr == nil {

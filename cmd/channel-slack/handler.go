@@ -121,11 +121,11 @@ func (s *slackSocketMode) Connect(ctx context.Context) error {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	httpClient := &http.Client{Timeout: 10 * time.Second}
-	resp, err := httpClient.Do(req)
+	resp, err := httpClient.Do(req) //nolint:gosec // URL is constructed from trusted API config
 	if err != nil {
 		return fmt.Errorf("failed to call apps.connections.open: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
@@ -356,11 +356,11 @@ func (p *slackPoster) doPost(ctx context.Context, body []byte) error {
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	req.Header.Set("Authorization", "Bearer "+p.cfg.BotToken)
 
-	resp, err := p.client.Do(req)
+	resp, err := p.client.Do(req) //nolint:gosec // URL is constructed from trusted API config
 	if err != nil {
 		return fmt.Errorf("failed to call chat.postMessage: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusTooManyRequests {
 		retryAfter := 1 * time.Second
@@ -412,9 +412,9 @@ func newHealthHandler(isHealthy func() bool) *healthHandler {
 func (h *healthHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	if h.isHealthy() {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write([]byte("unhealthy"))
+		_, _ = w.Write([]byte("unhealthy"))
 	}
 }

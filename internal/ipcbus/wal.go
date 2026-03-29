@@ -46,7 +46,7 @@ type WAL struct {
 // NewWAL creates the WAL directory if needed, recovers any existing log,
 // and opens the file for appending.
 func NewWAL(dir string) (*WAL, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return nil, fmt.Errorf("failed to create WAL directory: %w", err)
 	}
 
@@ -59,7 +59,7 @@ func NewWAL(dir string) (*WAL, error) {
 		return nil, fmt.Errorf("failed to recover WAL: %w", err)
 	}
 
-	f, err := os.OpenFile(w.path(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(w.path(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open WAL file: %w", err)
 	}
@@ -82,7 +82,7 @@ func (w *WAL) recover() error {
 		}
 		return fmt.Errorf("failed to open WAL for recovery: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 0, 64*1024), MaxMessageSize)
@@ -226,7 +226,7 @@ func (w *WAL) Compact() error {
 	defer w.mu.Unlock()
 
 	tmpPath := w.path() + ".tmp"
-	tmp, err := os.Create(tmpPath)
+	tmp, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600) //nolint:gosec // G304: tmpPath is derived from WAL dir, not user input
 	if err != nil {
 		return fmt.Errorf("failed to create compaction temp file: %w", err)
 	}
@@ -235,30 +235,30 @@ func (w *WAL) Compact() error {
 	for _, entry := range w.entries {
 		data, err := json.Marshal(entry)
 		if err != nil {
-			tmp.Close()
-			os.Remove(tmpPath)
+			_ = tmp.Close()
+			_ = os.Remove(tmpPath)
 			return fmt.Errorf("failed to marshal entry during compaction: %w", err)
 		}
 		data = append(data, '\n')
 		if _, err := bw.Write(data); err != nil {
-			tmp.Close()
-			os.Remove(tmpPath)
+			_ = tmp.Close()
+			_ = os.Remove(tmpPath)
 			return fmt.Errorf("failed to write entry during compaction: %w", err)
 		}
 	}
 
 	if err := bw.Flush(); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to flush compaction file: %w", err)
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to sync compaction file: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to close compaction file: %w", err)
 	}
 
@@ -275,7 +275,7 @@ func (w *WAL) Compact() error {
 	}
 
 	// Reopen file for appending.
-	f, err := os.OpenFile(w.path(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(w.path(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return fmt.Errorf("failed to reopen WAL after compaction: %w", err)
 	}

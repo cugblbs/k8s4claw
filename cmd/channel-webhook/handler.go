@@ -18,7 +18,7 @@ type webhookConfig struct {
 	ListenPort    int               `json:"listenPort"`
 	Path          string            `json:"path"`
 	TargetURL     string            `json:"targetURL"`
-	Secret        string            `json:"secret"`
+	Secret        string            `json:"secret"` //nolint:gosec // G117: HMAC verification secret, not a credential
 	Headers       map[string]string `json:"headers"`
 	RetryAttempts int               `json:"retryAttempts"`
 }
@@ -118,10 +118,10 @@ func newHealthHandler(isConnected func() bool) *healthHandler {
 func (h *healthHandler) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	if h.isConnected() {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write([]byte("disconnected"))
+		_, _ = w.Write([]byte("disconnected"))
 	}
 }
 
@@ -150,7 +150,7 @@ func (p *outboundPoster) post(ctx context.Context, payload json.RawMessage) erro
 			req.Header.Set(k, v)
 		}
 
-		resp, err := p.client.Do(req)
+		resp, err := p.client.Do(req) //nolint:gosec // URL is from trusted config
 		if err != nil {
 			lastErr = err
 			if err := retrySleep(ctx, attempt); err != nil {
@@ -158,7 +158,7 @@ func (p *outboundPoster) post(ctx context.Context, payload json.RawMessage) erro
 			}
 			continue
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			return nil

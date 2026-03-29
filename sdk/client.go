@@ -246,7 +246,7 @@ func (c *Client) WaitForReady(ctx context.Context, instance *ClawInstance) error
 					return nil
 				}
 				if phase == "Failed" {
-					return fmt.Errorf("Claw %s/%s entered Failed phase", ns, instance.Name)
+					return fmt.Errorf("claw %s/%s entered Failed phase", ns, instance.Name)
 				}
 			}
 		}

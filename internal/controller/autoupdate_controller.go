@@ -55,7 +55,7 @@ type Clock interface {
 
 type realClock struct{}
 
-func (realClock) Now() time.Time                { return time.Now() }
+func (realClock) Now() time.Time                  { return time.Now() }
 func (realClock) Since(t time.Time) time.Duration { return time.Since(t) }
 
 // AutoUpdateReconciler checks for new image versions and manages the update lifecycle.
@@ -78,7 +78,7 @@ func (r *AutoUpdateReconciler) clock() Clock {
 // +kubebuilder:rbac:groups=claw.prismer.ai,resources=claws/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch
 
-func (r *AutoUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *AutoUpdateReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) { //nolint:gocyclo // justified: reconciler state machine
 	logger := log.FromContext(ctx)
 
 	var claw clawv1alpha1.Claw

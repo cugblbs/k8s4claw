@@ -114,11 +114,11 @@ func (c *RegistryClient) ListTags(ctx context.Context, image string) ([]string, 
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req) //nolint:gosec // URL is constructed from trusted registry config
 	if err != nil {
 		return nil, fmt.Errorf("failed to list tags: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("registry returned status %d", resp.StatusCode)
@@ -170,11 +170,11 @@ func (c *RegistryClient) exchangeToken(ctx context.Context, image string) (strin
 		return "", fmt.Errorf("failed to create token request: %w", err)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req) //nolint:gosec // URL is constructed from trusted tokenURL config
 	if err != nil {
 		return "", fmt.Errorf("failed to get token: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("token exchange returned status %d", resp.StatusCode)

@@ -45,11 +45,11 @@ func (b *SSEBridge) Connect(ctx context.Context) error {
 		return fmt.Errorf("failed to create request: %w", err)
 	}
 
-	resp, err := b.client.Do(req)
+	resp, err := b.client.Do(req) //nolint:gosec // URL is constructed from trusted baseURL config
 	if err != nil {
 		return fmt.Errorf("failed to reach SSE endpoint %s/events: %w", b.baseURL, err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	return nil
 }
 
@@ -65,11 +65,11 @@ func (b *SSEBridge) Send(ctx context.Context, msg *Message) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := b.client.Do(req)
+	resp, err := b.client.Do(req) //nolint:gosec // URL is constructed from trusted baseURL config
 	if err != nil {
 		return fmt.Errorf("failed to POST message: %w", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	if resp.StatusCode >= 300 {
 		return fmt.Errorf("POST /messages returned status %d", resp.StatusCode)
@@ -110,9 +110,6 @@ func (b *SSEBridge) readSSELoop(ctx context.Context, ch chan<- *Message) {
 			return // clean shutdown
 		}
 
-		// Reset backoff on reconnect attempt (stream was alive, then dropped).
-		backoff = time.Second
-
 		select {
 		case <-b.closed:
 			return
@@ -135,11 +132,11 @@ func (b *SSEBridge) readSSEStream(ctx context.Context, ch chan<- *Message) error
 	}
 	req.Header.Set("Accept", "text/event-stream")
 
-	resp, err := b.sseClient.Do(req)
+	resp, err := b.sseClient.Do(req) //nolint:gosec // URL is constructed from trusted baseURL config
 	if err != nil {
 		return fmt.Errorf("SSE connection failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	scanner := bufio.NewScanner(resp.Body)
 	// Allow up to 1MB per SSE line to handle large messages.
@@ -176,8 +173,8 @@ func (b *SSEBridge) readSSEStream(ctx context.Context, ch chan<- *Message) error
 					return nil
 				}
 			}
-		case strings.HasPrefix(line, ":"):
-			// SSE comment, ignore.
+		default:
+			// SSE comment or unknown line, ignore.
 		}
 	}
 

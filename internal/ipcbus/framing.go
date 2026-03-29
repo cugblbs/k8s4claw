@@ -22,7 +22,7 @@ func WriteMessage(w io.Writer, msg *Message) error {
 	}
 
 	frame := make([]byte, FrameHeaderSize+len(data))
-	binary.BigEndian.PutUint32(frame, uint32(len(data)))
+	binary.BigEndian.PutUint32(frame, uint32(len(data))) //nolint:gosec // safe: len(data) bounded by MaxMessageSize (16 MiB)
 	copy(frame[FrameHeaderSize:], data)
 
 	if _, err := w.Write(frame); err != nil {

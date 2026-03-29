@@ -43,7 +43,7 @@ func (r *ClawReconciler) ensureIngress(ctx context.Context, claw *clawv1alpha1.C
 	}
 
 	if !metav1.IsControlledBy(&existing, claw) {
-		return fmt.Errorf("Ingress %s/%s already exists and is not owned by this Claw", existing.Namespace, existing.Name)
+		return fmt.Errorf("ingress %s/%s already exists and is not owned by this Claw", existing.Namespace, existing.Name)
 	}
 
 	existing.Labels = desired.Labels
@@ -96,7 +96,7 @@ func buildIngress(claw *clawv1alpha1.Claw, gatewayPort int) *networkingv1.Ingres
 										Service: &networkingv1.IngressServiceBackend{
 											Name: claw.Name,
 											Port: networkingv1.ServiceBackendPort{
-												Number: int32(gatewayPort),
+												Number: int32(gatewayPort), //nolint:gosec // safe: gatewayPort is a small port number
 											},
 										},
 									},

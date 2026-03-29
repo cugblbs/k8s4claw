@@ -92,8 +92,8 @@ func injectIPCBusIfNeeded(claw *clawv1alpha1.Claw, podTemplate *corev1.PodTempla
 	}
 
 	// Check if already injected (idempotent).
-	for _, c := range podTemplate.Spec.InitContainers {
-		if c.Name == ipcBusSidecarName() {
+	for i := range podTemplate.Spec.InitContainers {
+		if podTemplate.Spec.InitContainers[i].Name == ipcBusSidecarName() {
 			return
 		}
 	}

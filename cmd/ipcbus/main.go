@@ -51,7 +51,7 @@ func runServe() error {
 	if err != nil {
 		return fmt.Errorf("failed to create zap logger: %w", err)
 	}
-	defer zapLog.Sync()
+	defer func() { _ = zapLog.Sync() }()
 	logger := zapr.NewLogger(zapLog)
 
 	logger.Info("starting IPC Bus",
@@ -199,7 +199,7 @@ func runShutdown() error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to bus socket: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	// Register as __shutdown__.
 	regPayload, _ := json.Marshal(map[string]string{"role": "shutdown"})

@@ -1444,7 +1444,7 @@ func TestReconcile_ClawNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil error for not-found Claw, got: %v", err)
 	}
-	if result.Requeue {
+	if result.RequeueAfter > 0 { //nolint:staticcheck // using RequeueAfter instead of deprecated Requeue
 		t.Error("expected no requeue for not-found Claw")
 	}
 }
@@ -1794,7 +1794,7 @@ func TestHandleDeletion_NoFinalizer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil error for handleDeletion without finalizer, got: %v", err)
 	}
-	if result.Requeue {
+	if result.RequeueAfter > 0 { //nolint:staticcheck // using RequeueAfter instead of deprecated Requeue
 		t.Error("expected no requeue")
 	}
 }
@@ -2099,7 +2099,7 @@ func TestHandleChannelDeletion_NoFinalizer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected nil error for channel deletion without finalizer, got: %v", err)
 	}
-	if result.Requeue {
+	if result.RequeueAfter > 0 { //nolint:staticcheck // using RequeueAfter instead of deprecated Requeue
 		t.Error("expected no requeue")
 	}
 }
@@ -3666,8 +3666,8 @@ func TestBuildIngress_WithCustomAnnotations(t *testing.T) {
 					SecretName: "htpasswd-secret",
 				},
 				Annotations: map[string]string{
-					"custom/annotation":                        "value",
-					"nginx.ingress.kubernetes.io/auth-type":     "custom-override",
+					"custom/annotation":                     "value",
+					"nginx.ingress.kubernetes.io/auth-type": "custom-override",
 				},
 			},
 		},
@@ -3914,7 +3914,7 @@ func TestShouldInjectArchiver(t *testing.T) {
 					Persistence: &clawv1alpha1.PersistenceSpec{
 						Output: &clawv1alpha1.OutputVolumeSpec{
 							VolumeSpec: clawv1alpha1.VolumeSpec{Enabled: true, Size: "1Gi", MountPath: "/output"},
-							Archive: &clawv1alpha1.ArchiveSpec{Enabled: false},
+							Archive:    &clawv1alpha1.ArchiveSpec{Enabled: false},
 						},
 					},
 				},
@@ -3962,9 +3962,9 @@ func TestInjectArchiverSidecar(t *testing.T) {
 					Archive: &clawv1alpha1.ArchiveSpec{
 						Enabled: true,
 						Destination: clawv1alpha1.ArchiveDestination{
-							Type:   "s3",
-							Bucket: "archive-bucket",
-							Prefix: "claws/",
+							Type:      "s3",
+							Bucket:    "archive-bucket",
+							Prefix:    "claws/",
 							SecretRef: corev1.LocalObjectReference{Name: "s3-creds"},
 						},
 						Trigger: clawv1alpha1.ArchiveTrigger{

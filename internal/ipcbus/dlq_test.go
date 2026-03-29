@@ -14,7 +14,7 @@ func newTestDLQ(t *testing.T, maxSize int, ttl time.Duration) *DLQ {
 	if err != nil {
 		t.Fatalf("failed to create DLQ: %v", err)
 	}
-	t.Cleanup(func() { dlq.Close() })
+	t.Cleanup(func() { _ = dlq.Close() })
 	return dlq
 }
 

@@ -22,7 +22,7 @@ const lastSnapshotTimeAnnotation = "claw.prismer.ai/last-snapshot-time"
 // reconcileSnapshots checks each volume's snapshot schedule and creates
 // VolumeSnapshot CRs when due. Returns a non-zero RequeueAfter if any
 // snapshot schedule is active.
-func (r *ClawReconciler) reconcileSnapshots(ctx context.Context, claw *clawv1alpha1.Claw) (ctrl.Result, error) {
+func (r *ClawReconciler) reconcileSnapshots(ctx context.Context, claw *clawv1alpha1.Claw) (ctrl.Result, error) { //nolint:gocyclo // justified: snapshot reconciler state machine
 	if claw.Spec.Persistence == nil {
 		return ctrl.Result{}, nil
 	}
@@ -170,9 +170,9 @@ func (r *ClawReconciler) pruneSnapshots(ctx context.Context, claw *clawv1alpha1.
 	// Filter snapshots for this volume by name prefix.
 	prefix := fmt.Sprintf("%s-%s-", claw.Name, volumeName)
 	var matching []snapshotv1.VolumeSnapshot
-	for _, snap := range snapList.Items {
-		if len(snap.Name) > len(prefix) && snap.Name[:len(prefix)] == prefix {
-			matching = append(matching, snap)
+	for i := range snapList.Items {
+		if len(snapList.Items[i].Name) > len(prefix) && snapList.Items[i].Name[:len(prefix)] == prefix {
+			matching = append(matching, snapList.Items[i])
 		}
 	}
 

@@ -180,7 +180,7 @@ func TestOutboundPost_Success(t *testing.T) {
 			t.Errorf("Content-Type = %q", r.Header.Get("Content-Type"))
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer ts.Close()
 
@@ -216,7 +216,7 @@ func TestOutboundPost_WithExplicitChannel(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		received, _ = io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer ts.Close()
 
@@ -248,7 +248,7 @@ func TestOutboundPost_WithBlocks(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		received, _ = io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer ts.Close()
 
@@ -285,7 +285,7 @@ func TestOutboundPost_RateLimited(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer ts.Close()
 
@@ -310,7 +310,7 @@ func TestOutboundPost_RateLimited(t *testing.T) {
 func TestOutboundPost_SlackError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":false,"error":"channel_not_found"}`))
+		_, _ = w.Write([]byte(`{"ok":false,"error":"channel_not_found"}`))
 	}))
 	defer ts.Close()
 
@@ -560,7 +560,7 @@ func TestSlackSocketMode_Connect_APIError(t *testing.T) {
 			t.Errorf("wrong auth header: %s", r.Header.Get("Authorization"))
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":false,"error":"invalid_auth"}`))
+		_, _ = w.Write([]byte(`{"ok":false,"error":"invalid_auth"}`))
 	}))
 	defer ts.Close()
 
@@ -586,7 +586,7 @@ func TestSlackSocketMode_Connect_Success(t *testing.T) {
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true,"url":"wss://fake.slack.test/ws"}`))
+		_, _ = w.Write([]byte(`{"ok":true,"url":"wss://fake.slack.test/ws"}`))
 	}))
 	defer ts.Close()
 
@@ -609,7 +609,7 @@ func TestSlackSocketMode_Connect_DialError(t *testing.T) {
 
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true,"url":"wss://fake.slack.test/ws"}`))
+		_, _ = w.Write([]byte(`{"ok":true,"url":"wss://fake.slack.test/ws"}`))
 	}))
 	defer ts.Close()
 
@@ -626,7 +626,7 @@ func TestSlackSocketMode_Connect_DialError(t *testing.T) {
 func TestSlackSocketMode_Connect_HTTPError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("server error"))
+		_, _ = w.Write([]byte("server error"))
 	}))
 	defer ts.Close()
 
@@ -775,29 +775,6 @@ func TestSlackSocketMode_Close_NilConn(t *testing.T) {
 // runOutboundLoop tests
 // ---------------------------------------------------------------------------
 
-// mockPoster captures calls to post().
-type mockPoster struct {
-	mu      sync.Mutex
-	posted  []json.RawMessage
-	postErr error
-}
-
-func (m *mockPoster) post(_ context.Context, payload json.RawMessage) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.posted = append(m.posted, payload)
-	return m.postErr
-}
-
-func (m *mockPoster) getPosted() []json.RawMessage {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return append([]json.RawMessage(nil), m.posted...)
-}
-
-// posterAdapter wraps mockPoster to satisfy slackPoster type needed by runOutboundLoop.
-// Since runOutboundLoop uses *slackPoster directly, we test via the real slackPoster
-// with an httptest server.
 func TestRunOutboundLoop(t *testing.T) {
 	var received [][]byte
 	var mu sync.Mutex
@@ -807,7 +784,7 @@ func TestRunOutboundLoop(t *testing.T) {
 		received = append(received, body)
 		mu.Unlock()
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer ts.Close()
 
@@ -868,7 +845,7 @@ func TestRunOutboundLoop(t *testing.T) {
 func TestRunOutboundLoop_ContextCancel(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer ts.Close()
 
@@ -899,7 +876,7 @@ func TestRunOutboundLoop_ContextCancel(t *testing.T) {
 func TestRunOutboundLoop_ChannelClosed(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer ts.Close()
 
@@ -930,7 +907,7 @@ func TestRunOutboundLoop_ChannelClosed(t *testing.T) {
 func TestRunOutboundLoop_PostError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":false,"error":"channel_not_found"}`))
+		_, _ = w.Write([]byte(`{"ok":false,"error":"channel_not_found"}`))
 	}))
 	defer ts.Close()
 
@@ -1004,11 +981,11 @@ func TestDoPost_TransientError_Retries(t *testing.T) {
 		if n <= 2 {
 			// Close connection abruptly to simulate transient error.
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("internal error"))
+			_, _ = w.Write([]byte("internal error"))
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer ts.Close()
 
@@ -1038,7 +1015,7 @@ func TestDoPost_TransientError_Retries(t *testing.T) {
 func TestDoPost_MalformedResponse(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("not json at all"))
+		_, _ = w.Write([]byte("not json at all"))
 	}))
 	defer ts.Close()
 
@@ -1062,7 +1039,7 @@ func TestDoPost_ContextTimeout(t *testing.T) {
 		// Delay to trigger context timeout.
 		time.Sleep(5 * time.Second)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer ts.Close()
 
@@ -1157,7 +1134,7 @@ func TestParseConfig_ZeroValues(t *testing.T) {
 func TestSlackSocketMode_Connect_BadResponseBody(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`not json`))
+		_, _ = w.Write([]byte(`not json`))
 	}))
 	defer ts.Close()
 
@@ -1394,7 +1371,7 @@ func (m *mockChannelClient) Close() error {
 func TestRun_OutboundMode(t *testing.T) {
 	slackAPI := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer slackAPI.Close()
 
@@ -1514,7 +1491,7 @@ func newTestWSServer(t *testing.T, serverMsg []byte) *httptest.Server {
 			t.Logf("websocket.Accept: %v", err)
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 
 		if serverMsg != nil {
 			if err := conn.Write(r.Context(), websocket.MessageText, serverMsg); err != nil {
@@ -1528,8 +1505,8 @@ func newTestWSServer(t *testing.T, serverMsg []byte) *httptest.Server {
 		if err != nil {
 			return
 		}
-		conn.Write(r.Context(), websocket.MessageText, data)
-		conn.Close(websocket.StatusNormalClosure, "done")
+		_ = conn.Write(r.Context(), websocket.MessageText, data)
+		_ = conn.Close(websocket.StatusNormalClosure, "done")
 	}))
 }
 
@@ -1594,7 +1571,7 @@ func TestCoderWSConn_ReadError(t *testing.T) {
 		if err != nil {
 			return
 		}
-		conn.Close(websocket.StatusNormalClosure, "bye")
+		_ = conn.Close(websocket.StatusNormalClosure, "bye")
 	}))
 	defer ts.Close()
 
@@ -1603,7 +1580,7 @@ func TestCoderWSConn_ReadError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer ws.Close()
+	defer func() { _ = ws.Close() }()
 
 	_, err = ws.ReadMessage(context.Background())
 	if err == nil {
@@ -1618,7 +1595,7 @@ func TestCoderWSConn_WriteError(t *testing.T) {
 		if err != nil {
 			return
 		}
-		conn.Close(websocket.StatusNormalClosure, "bye")
+		_ = conn.Close(websocket.StatusNormalClosure, "bye")
 	}))
 	defer ts.Close()
 
@@ -1627,7 +1604,7 @@ func TestCoderWSConn_WriteError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	defer ws.Close()
+	defer func() { _ = ws.Close() }()
 
 	// Read to consume the close frame so the connection is truly closed.
 	_, _ = ws.ReadMessage(context.Background())
@@ -1647,7 +1624,7 @@ func TestSlackSocketMode_FullIntegration(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.CloseNow()
+		defer func() { _ = conn.CloseNow() }()
 
 		// Send the envelope.
 		if err := conn.Write(r.Context(), websocket.MessageText, []byte(envelope)); err != nil {
@@ -1660,7 +1637,7 @@ func TestSlackSocketMode_FullIntegration(t *testing.T) {
 			return
 		}
 
-		conn.Close(websocket.StatusNormalClosure, "done")
+		_ = conn.Close(websocket.StatusNormalClosure, "done")
 	}))
 	defer wsServer.Close()
 
@@ -1674,7 +1651,7 @@ func TestSlackSocketMode_FullIntegration(t *testing.T) {
 	// Mock the apps.connections.open API to return our WS URL.
 	apiServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"ok":true,"url":%q}`, wsURL)
+		_, _ = fmt.Fprintf(w, `{"ok":true,"url":%q}`, wsURL)
 	}))
 	defer apiServer.Close()
 
@@ -1684,7 +1661,7 @@ func TestSlackSocketMode_FullIntegration(t *testing.T) {
 	if err := sm.Connect(ctx); err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
-	defer sm.Close()
+	defer func() { _ = sm.Close() }()
 
 	if !sm.Connected() {
 		t.Fatal("expected Connected() to be true")

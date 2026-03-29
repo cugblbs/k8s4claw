@@ -30,8 +30,8 @@ func (b *streamBridge) Send(ctx context.Context, msg *Message) error {
 
 	// Respect context deadline for the write.
 	if deadline, ok := ctx.Deadline(); ok {
-		b.conn.SetWriteDeadline(deadline)
-		defer b.conn.SetWriteDeadline(time.Time{})
+		_ = b.conn.SetWriteDeadline(deadline)
+		defer func() { _ = b.conn.SetWriteDeadline(time.Time{}) }()
 	}
 
 	if err := WriteMessage(b.conn, msg); err != nil {
@@ -50,7 +50,7 @@ func (b *streamBridge) Receive(ctx context.Context) (<-chan *Message, error) {
 		go func() {
 			select {
 			case <-ctx.Done():
-				b.conn.Close()
+				_ = b.conn.Close()
 			case <-b.closed:
 			}
 		}()

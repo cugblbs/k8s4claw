@@ -26,23 +26,27 @@ type channelClient interface {
 }
 
 func main() {
+	if err := mainRun(); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+}
+
+func mainRun() error {
 	zapLog, err := zap.NewProduction()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "failed to initialize logger: %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to initialize logger: %v", err)
 	}
 	logger := zapr.NewLogger(zapLog)
 
 	configJSON := os.Getenv("CHANNEL_CONFIG")
 	cfg, err := parseConfig(configJSON)
 	if err != nil {
-		logger.Error(err, "failed to parse config")
-		os.Exit(1)
+		return fmt.Errorf("failed to parse config: %w", err)
 	}
 
 	if cfg.BotToken == "" {
-		logger.Error(fmt.Errorf("SLACK_BOT_TOKEN is required"), "missing bot token")
-		os.Exit(1)
+		return fmt.Errorf("SLACK_BOT_TOKEN is required")
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
@@ -50,17 +54,13 @@ func main() {
 
 	client, err := channel.Connect(ctx, channel.WithLogger(logger))
 	if err != nil {
-		logger.Error(err, "failed to connect to IPC Bus")
-		os.Exit(1)
+		return fmt.Errorf("failed to connect to IPC Bus: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	mode := os.Getenv("CHANNEL_MODE")
 
-	if err := run(ctx, cfg, client, mode, logger); err != nil {
-		logger.Error(err, "run failed")
-		os.Exit(1)
-	}
+	return run(ctx, cfg, client, mode, logger)
 }
 
 func run(ctx context.Context, cfg *slackConfig, client channelClient, mode string, logger logr.Logger) error {
@@ -74,7 +74,7 @@ func run(ctx context.Context, cfg *slackConfig, client channelClient, mode strin
 		if err := sm.Connect(ctx); err != nil {
 			return fmt.Errorf("failed to connect Socket Mode: %w", err)
 		}
-		defer sm.Close()
+		defer func() { _ = sm.Close() }()
 		smConn = sm
 
 		go runInboundLoop(ctx, smConn, client, logger)
@@ -100,13 +100,13 @@ func run(ctx context.Context, cfg *slackConfig, client channelClient, mode strin
 	}))
 
 	addr := fmt.Sprintf(":%d", cfg.ListenPort)
-	srv := &http.Server{Addr: addr, Handler: mux}
+	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 
 	go func() {
 		<-ctx.Done()
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
-		srv.Shutdown(shutdownCtx)
+		_ = srv.Shutdown(shutdownCtx)
 	}()
 
 	logger.Info("slack sidecar starting", "addr", addr, "mode", mode)

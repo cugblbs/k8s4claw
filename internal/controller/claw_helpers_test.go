@@ -136,41 +136,6 @@ func TestBuildIngress_WithClassName(t *testing.T) {
 // claw_archiver.go — additional coverage
 // ---------------------------------------------------------------------------
 
-func TestFormatMountPath_AllBranches(t *testing.T) {
-	t.Parallel()
-
-	t.Run("with output mount", func(t *testing.T) {
-		t.Parallel()
-		claw := &clawv1alpha1.Claw{
-			Spec: clawv1alpha1.ClawSpec{Persistence: &clawv1alpha1.PersistenceSpec{
-				Output: &clawv1alpha1.OutputVolumeSpec{VolumeSpec: clawv1alpha1.VolumeSpec{MountPath: "/data/out"}},
-			}},
-		}
-		if got := formatMountPath(claw); got != "/data/out" {
-			t.Errorf("formatMountPath = %q", got)
-		}
-	})
-
-	t.Run("nil persistence fallback", func(t *testing.T) {
-		t.Parallel()
-		claw := &clawv1alpha1.Claw{ObjectMeta: metav1.ObjectMeta{Name: "x"}}
-		if got := formatMountPath(claw); got != "/data/output/x" {
-			t.Errorf("formatMountPath = %q", got)
-		}
-	})
-
-	t.Run("nil output fallback", func(t *testing.T) {
-		t.Parallel()
-		claw := &clawv1alpha1.Claw{
-			ObjectMeta: metav1.ObjectMeta{Name: "y"},
-			Spec:       clawv1alpha1.ClawSpec{Persistence: &clawv1alpha1.PersistenceSpec{}},
-		}
-		if got := formatMountPath(claw); got != "/data/output/y" {
-			t.Errorf("formatMountPath = %q", got)
-		}
-	})
-}
-
 func TestInjectArchiverIfNeeded_SkipsWhenNotNeeded(t *testing.T) {
 	t.Parallel()
 	claw := &clawv1alpha1.Claw{}

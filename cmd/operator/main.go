@@ -86,7 +86,7 @@ func main() {
 		Client:                mgr.GetClient(),
 		Scheme:                mgr.GetScheme(),
 		Registry:              registry,
-		Recorder:              mgr.GetEventRecorderFor("claw-controller"),
+		Recorder:              mgr.GetEventRecorderFor("claw-controller"), //nolint:staticcheck // SA1019: migration to events.EventRecorder requires controller struct changes
 		NativeSidecarsEnabled: enableNativeSidecars,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Claw")
@@ -102,7 +102,7 @@ func main() {
 	if err := (&controller.ClawSelfConfigReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("selfconfig-controller"),
+		Recorder: mgr.GetEventRecorderFor("selfconfig-controller"), //nolint:staticcheck // SA1019: migration to events.EventRecorder requires controller struct changes
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "ClawSelfConfig")
 		os.Exit(1)
@@ -113,7 +113,7 @@ func main() {
 	if err := (&controller.AutoUpdateReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
-		Recorder:  mgr.GetEventRecorderFor("autoupdate-controller"),
+		Recorder:  mgr.GetEventRecorderFor("autoupdate-controller"), //nolint:staticcheck // SA1019: migration to events.EventRecorder requires controller struct changes
 		TagLister: registryClient,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AutoUpdate")
