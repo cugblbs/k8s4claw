@@ -10,9 +10,10 @@ bin/
 *.out
 coverage.txt
 
-# IDE
+# IDE / AI tools
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 *~
