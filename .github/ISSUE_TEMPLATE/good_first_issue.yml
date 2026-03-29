@@ -1,0 +1,90 @@
+name: Good First Issue
+description: A well-scoped task suitable for new contributors
+title: "[Good First Issue]: "
+labels: ["good first issue", "help wanted"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This template is for **maintainers** to create beginner-friendly issues.
+        Each issue should be self-contained with clear scope, pointers to relevant code, and acceptance criteria.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part of the codebase does this touch?
+      options:
+        - Operator / Controller
+        - CRD / API Types
+        - IPC Bus
+        - Channel Sidecar
+        - Runtime Adapter
+        - SDK
+        - Documentation
+        - Tests
+        - CI / Tooling
+    validations:
+      required: true
+
+  - type: dropdown
+    id: difficulty
+    attributes:
+      label: Difficulty
+      description: Estimated difficulty for someone new to the project.
+      options:
+        - "Easy (< 1 hour, single file)"
+        - "Medium (1-3 hours, 2-3 files)"
+        - "Hard (3-8 hours, cross-cutting)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What needs to be done, in 1-2 sentences.
+      placeholder: Add credential validation to ZeroClaw runtime adapter.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why this matters and any background a newcomer needs.
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Relevant Files
+      description: List the files a contributor should look at.
+      placeholder: |
+        - `internal/runtime/zeroclaw.go` — the adapter to modify
+        - `internal/runtime/openclaw.go` — reference implementation
+        - `internal/runtime/adapter_test.go` — test patterns to follow
+    validations:
+      required: true
+
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance Criteria
+      description: How do we know this is done?
+      placeholder: |
+        - [ ] Validate() rejects ClawSpec without credentials
+        - [ ] ValidateUpdate() rejects storage class changes
+        - [ ] Tests cover all new branches
+        - [ ] `go vet` and `go test -race` pass
+    validations:
+      required: true
+
+  - type: textarea
+    id: hints
+    attributes:
+      label: Hints
+      description: Optional tips or pointers to help the contributor get started.
+      placeholder: |
+        Look at how `OpenClawAdapter.Validate()` works in `openclaw.go` — the pattern is the same.
