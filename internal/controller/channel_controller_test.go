@@ -85,13 +85,15 @@ func TestClawChannelReconciler_ReferenceCount(t *testing.T) {
 	})
 
 	// Create a Claw that references this channel.
+	ensureTestSecret(t, ns)
 	claw := &clawv1alpha1.Claw{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-claw-ref",
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 			Channels: []clawv1alpha1.ChannelRef{
 				{
 					Name: channel.Name,
@@ -188,13 +190,15 @@ func TestClawChannelReconciler_DeletionProtection(t *testing.T) {
 	})
 
 	// Create a Claw that references this channel.
+	ensureTestSecret(t, ns)
 	claw := &clawv1alpha1.Claw{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-claw-del",
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 			Channels: []clawv1alpha1.ChannelRef{
 				{
 					Name: channel.Name,

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -153,4 +155,24 @@ func TestMain(m *testing.M) {
 	}
 
 	os.Exit(code)
+}
+
+// testCredentials returns a CredentialSpec for use in tests.
+func testCredentials() *clawv1alpha1.CredentialSpec {
+	return &clawv1alpha1.CredentialSpec{
+		SecretRef: &corev1.LocalObjectReference{Name: "test-secret"},
+	}
+}
+
+// ensureTestSecret creates the "test-secret" Secret in the given namespace
+// so that the reconciler can hash it during credential injection.
+func ensureTestSecret(t *testing.T, ns string) {
+	t.Helper()
+	secret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-secret", Namespace: ns},
+		Data:       map[string][]byte{"API_KEY": []byte("sk-test")},
+	}
+	if err := k8sClient.Create(ctx, secret); err != nil {
+		t.Fatalf("failed to create test secret: %v", err)
+	}
 }

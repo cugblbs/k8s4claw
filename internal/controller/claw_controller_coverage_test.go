@@ -182,6 +182,7 @@ func TestDeepMerge(t *testing.T) {
 func TestClawReconciler_ConfigMapWithUserConfig(t *testing.T) {
 	ns := fmt.Sprintf("test-cm-merge-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 
 	clawName := "test-claw-cm-merge"
 	userConfig := `{"model":"claude-sonnet-4","customSetting":true}`
@@ -191,8 +192,9 @@ func TestClawReconciler_ConfigMapWithUserConfig(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
-			Config:  &apiextensionsv1.JSON{Raw: []byte(userConfig)},
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
+			Config:      &apiextensionsv1.JSON{Raw: []byte(userConfig)},
 		},
 	}
 
@@ -465,6 +467,8 @@ func TestClawReconciler_StatefulSetUpdated(t *testing.T) {
 	ns := fmt.Sprintf("test-sts-update-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
 
+	ensureTestSecret(t, ns)
+
 	clawName := "test-claw-sts-upd"
 	claw := &clawv1alpha1.Claw{
 		ObjectMeta: metav1.ObjectMeta{
@@ -472,7 +476,8 @@ func TestClawReconciler_StatefulSetUpdated(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 		},
 	}
 
@@ -742,6 +747,7 @@ func TestClawReconciler_PVCReclaimArchive(t *testing.T) {
 func TestClawReconciler_ConfigMapUpdated(t *testing.T) {
 	ns := fmt.Sprintf("test-cm-upd-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 
 	clawName := "test-claw-cm-upd"
 	claw := &clawv1alpha1.Claw{
@@ -750,7 +756,8 @@ func TestClawReconciler_ConfigMapUpdated(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 		},
 	}
 	if err := k8sClient.Create(ctx, claw); err != nil {

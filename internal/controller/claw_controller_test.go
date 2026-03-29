@@ -54,6 +54,7 @@ func createNamespace(t *testing.T, name string) {
 func TestClawReconciler_FinalizerAdded(t *testing.T) {
 	ns := fmt.Sprintf("test-finalizer-add-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 
 	claw := &clawv1alpha1.Claw{
 		ObjectMeta: metav1.ObjectMeta{
@@ -61,7 +62,8 @@ func TestClawReconciler_FinalizerAdded(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 		},
 	}
 
@@ -89,6 +91,7 @@ func TestClawReconciler_FinalizerAdded(t *testing.T) {
 func TestClawReconciler_FinalizerRunsOnDelete(t *testing.T) {
 	ns := fmt.Sprintf("test-finalizer-del-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 
 	claw := &clawv1alpha1.Claw{
 		ObjectMeta: metav1.ObjectMeta{
@@ -96,7 +99,8 @@ func TestClawReconciler_FinalizerRunsOnDelete(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 		},
 	}
 
@@ -145,6 +149,7 @@ func TestClawReconciler_FinalizerRunsOnDelete(t *testing.T) {
 func TestClawReconciler_StatefulSetCreated(t *testing.T) {
 	ns := fmt.Sprintf("test-sts-create-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 
 	clawName := "test-claw-sts"
 	claw := &clawv1alpha1.Claw{
@@ -153,7 +158,8 @@ func TestClawReconciler_StatefulSetCreated(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 		},
 	}
 
@@ -393,6 +399,7 @@ func TestClawReconciler_StatusProvisioning(t *testing.T) {
 func TestClawReconciler_ServiceCreated(t *testing.T) {
 	ns := fmt.Sprintf("test-svc-create-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 
 	clawName := "test-claw-svc"
 	claw := &clawv1alpha1.Claw{
@@ -401,7 +408,8 @@ func TestClawReconciler_ServiceCreated(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 		},
 	}
 
@@ -762,6 +770,7 @@ func TestClawReconciler_UnknownRuntime(t *testing.T) {
 func TestClawReconciler_PVCReclaimDelete(t *testing.T) {
 	ns := fmt.Sprintf("test-reclaim-del-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 
 	clawName := "test-claw-reclaim-del"
 	claw := &clawv1alpha1.Claw{
@@ -770,7 +779,8 @@ func TestClawReconciler_PVCReclaimDelete(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 			Persistence: &clawv1alpha1.PersistenceSpec{
 				ReclaimPolicy: clawv1alpha1.ReclaimDelete,
 				Session: &clawv1alpha1.VolumeSpec{
@@ -877,6 +887,7 @@ func TestClawReconciler_PVCReclaimDelete(t *testing.T) {
 func TestClawReconciler_PVCReclaimRetain(t *testing.T) {
 	ns := fmt.Sprintf("test-reclaim-ret-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 
 	clawName := "test-claw-reclaim-ret"
 	claw := &clawv1alpha1.Claw{
@@ -885,7 +896,8 @@ func TestClawReconciler_PVCReclaimRetain(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 			Persistence: &clawv1alpha1.PersistenceSpec{
 				ReclaimPolicy: clawv1alpha1.ReclaimRetain,
 				Session: &clawv1alpha1.VolumeSpec{
@@ -968,6 +980,7 @@ func TestClawReconciler_PVCReclaimRetain(t *testing.T) {
 func TestClawReconciler_ServiceAccountCreated(t *testing.T) {
 	ns := fmt.Sprintf("test-sa-create-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 
 	clawName := "test-claw-sa"
 	claw := &clawv1alpha1.Claw{
@@ -976,7 +989,8 @@ func TestClawReconciler_ServiceAccountCreated(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 		},
 	}
 
@@ -1053,6 +1067,7 @@ func TestClawReconciler_ServiceAccountCreated(t *testing.T) {
 func TestClawReconciler_ServiceAccountUserManaged(t *testing.T) {
 	ns := fmt.Sprintf("test-sa-user-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 
 	clawName := "test-claw-sa-custom"
 	customSAName := "my-custom-sa"
@@ -1062,7 +1077,8 @@ func TestClawReconciler_ServiceAccountUserManaged(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 			ServiceAccount: &clawv1alpha1.ServiceAccountRef{
 				Name: customSAName,
 			},
@@ -1142,6 +1158,7 @@ func TestWebhook_RejectsInvalidCreate_CredentialExclusivity(t *testing.T) {
 func TestWebhook_RejectsRuntimeChange(t *testing.T) {
 	ns := fmt.Sprintf("test-wh-immut-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 
 	claw := &clawv1alpha1.Claw{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1149,7 +1166,8 @@ func TestWebhook_RejectsRuntimeChange(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 		},
 	}
 
@@ -1182,6 +1200,7 @@ func TestWebhook_RejectsRuntimeChange(t *testing.T) {
 func TestWebhook_DefaultsReclaimPolicy(t *testing.T) {
 	ns := fmt.Sprintf("test-wh-default-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 
 	claw := &clawv1alpha1.Claw{
 		ObjectMeta: metav1.ObjectMeta{
@@ -1189,7 +1208,8 @@ func TestWebhook_DefaultsReclaimPolicy(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 			Persistence: &clawv1alpha1.PersistenceSpec{
 				Session: &clawv1alpha1.VolumeSpec{
 					Enabled:   true,
@@ -1226,6 +1246,7 @@ func TestWebhook_DefaultsReclaimPolicy(t *testing.T) {
 func TestClawReconciler_NoRoleWithoutSelfConfigure(t *testing.T) {
 	ns := fmt.Sprintf("test-no-rbac-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 
 	clawName := "test-claw-no-rbac"
 	claw := &clawv1alpha1.Claw{
@@ -1234,7 +1255,8 @@ func TestClawReconciler_NoRoleWithoutSelfConfigure(t *testing.T) {
 			Namespace: ns,
 		},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 		},
 	}
 

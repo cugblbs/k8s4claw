@@ -216,15 +216,16 @@ func TestE2E_OpenClawFullLifecycle(t *testing.T) {
 
 func TestE2E_MultiRuntime(t *testing.T) {
 	tests := []struct {
-		runtime   clawv1alpha1.RuntimeType
-		wantImage string
-		wantPort  int32
+		runtime    clawv1alpha1.RuntimeType
+		wantImage  string
+		wantPort   int32
+		needsCreds bool
 	}{
-		{clawv1alpha1.RuntimeOpenClaw, "ghcr.io/prismer-ai/k8s4claw-openclaw:latest", 18900},
-		{clawv1alpha1.RuntimeNanoClaw, "ghcr.io/prismer-ai/k8s4claw-nanoclaw:latest", 19000},
-		{clawv1alpha1.RuntimeZeroClaw, "ghcr.io/prismer-ai/k8s4claw-zeroclaw:latest", 3000},
-		{clawv1alpha1.RuntimePicoClaw, "ghcr.io/prismer-ai/k8s4claw-picoclaw:latest", 8080},
-		{clawv1alpha1.RuntimeIronClaw, "ghcr.io/prismer-ai/k8s4claw-ironclaw:latest", 3001},
+		{clawv1alpha1.RuntimeOpenClaw, "ghcr.io/prismer-ai/k8s4claw-openclaw:latest", 18900, true},
+		{clawv1alpha1.RuntimeNanoClaw, "ghcr.io/prismer-ai/k8s4claw-nanoclaw:latest", 19000, false},
+		{clawv1alpha1.RuntimeZeroClaw, "ghcr.io/prismer-ai/k8s4claw-zeroclaw:latest", 3000, false},
+		{clawv1alpha1.RuntimePicoClaw, "ghcr.io/prismer-ai/k8s4claw-picoclaw:latest", 8080, false},
+		{clawv1alpha1.RuntimeIronClaw, "ghcr.io/prismer-ai/k8s4claw-ironclaw:latest", 3001, true},
 	}
 
 	for _, tt := range tests {
@@ -233,9 +234,14 @@ func TestE2E_MultiRuntime(t *testing.T) {
 			createNamespace(t, ns)
 			nn := types.NamespacedName{Name: "rt-claw", Namespace: ns}
 
+			spec := clawv1alpha1.ClawSpec{Runtime: tt.runtime}
+			if tt.needsCreds {
+				spec.Credentials = testCredentials()
+				ensureTestSecret(t, ns)
+			}
 			claw := &clawv1alpha1.Claw{
 				ObjectMeta: metav1.ObjectMeta{Name: nn.Name, Namespace: ns},
-				Spec:       clawv1alpha1.ClawSpec{Runtime: tt.runtime},
+				Spec:       spec,
 			}
 			if err := k8sClient.Create(ctx, claw); err != nil {
 				t.Fatalf("failed to create Claw: %v", err)
@@ -296,6 +302,7 @@ func TestE2E_MultiRuntime(t *testing.T) {
 func TestE2E_ChannelWithIPCBus(t *testing.T) {
 	ns := fmt.Sprintf("e2e-channel-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 
 	// Create ClawChannel.
 	channel := &clawv1alpha1.ClawChannel{
@@ -314,7 +321,8 @@ func TestE2E_ChannelWithIPCBus(t *testing.T) {
 	claw := &clawv1alpha1.Claw{
 		ObjectMeta: metav1.ObjectMeta{Name: clawNN.Name, Namespace: ns},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 			Channels: []clawv1alpha1.ChannelRef{
 				{Name: "e2e-webhook", Mode: clawv1alpha1.ChannelModeBidirectional},
 			},
@@ -432,12 +440,14 @@ func TestE2E_ChannelWithIPCBus(t *testing.T) {
 func TestE2E_SecurityAndNetwork(t *testing.T) {
 	ns := fmt.Sprintf("e2e-security-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 	nn := types.NamespacedName{Name: "secure-claw", Namespace: ns}
 
 	claw := &clawv1alpha1.Claw{
 		ObjectMeta: metav1.ObjectMeta{Name: nn.Name, Namespace: ns},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 			Security: &clawv1alpha1.SecuritySpec{
 				NetworkPolicy: &clawv1alpha1.NetworkPolicySpec{
 					Enabled:            true,
@@ -722,11 +732,12 @@ func TestE2E_WebhookValidation(t *testing.T) {
 	t.Run("rejects runtime change (immutable)", func(t *testing.T) {
 		ns := fmt.Sprintf("e2e-wh-immut-%d", time.Now().UnixNano())
 		createNamespace(t, ns)
+		ensureTestSecret(t, ns)
 		nn := types.NamespacedName{Name: "immut-claw", Namespace: ns}
 
 		claw := &clawv1alpha1.Claw{
 			ObjectMeta: metav1.ObjectMeta{Name: nn.Name, Namespace: ns},
-			Spec:       clawv1alpha1.ClawSpec{Runtime: clawv1alpha1.RuntimeOpenClaw},
+			Spec:       clawv1alpha1.ClawSpec{Runtime: clawv1alpha1.RuntimeOpenClaw, Credentials: testCredentials()},
 		}
 		if err := k8sClient.Create(ctx, claw); err != nil {
 			t.Fatalf("failed to create Claw: %v", err)
@@ -774,12 +785,14 @@ func TestE2E_WebhookValidation(t *testing.T) {
 	t.Run("defaults reclaimPolicy to Retain", func(t *testing.T) {
 		ns := fmt.Sprintf("e2e-wh-default-%d", time.Now().UnixNano())
 		createNamespace(t, ns)
+		ensureTestSecret(t, ns)
 		nn := types.NamespacedName{Name: "default-claw", Namespace: ns}
 
 		claw := &clawv1alpha1.Claw{
 			ObjectMeta: metav1.ObjectMeta{Name: nn.Name, Namespace: ns},
 			Spec: clawv1alpha1.ClawSpec{
-				Runtime: clawv1alpha1.RuntimeOpenClaw,
+				Runtime:     clawv1alpha1.RuntimeOpenClaw,
+				Credentials: testCredentials(),
 				Persistence: &clawv1alpha1.PersistenceSpec{
 					Session: &clawv1alpha1.VolumeSpec{Enabled: true, Size: "1Gi", MountPath: "/data"},
 				},
@@ -809,13 +822,15 @@ func TestE2E_WebhookValidation(t *testing.T) {
 func TestE2E_SelfConfig(t *testing.T) {
 	ns := fmt.Sprintf("e2e-selfconfig-%d", time.Now().UnixNano())
 	createNamespace(t, ns)
+	ensureTestSecret(t, ns)
 	nn := types.NamespacedName{Name: "selfconfig-claw", Namespace: ns}
 
 	// Create Claw with selfConfigure enabled.
 	claw := &clawv1alpha1.Claw{
 		ObjectMeta: metav1.ObjectMeta{Name: nn.Name, Namespace: ns},
 		Spec: clawv1alpha1.ClawSpec{
-			Runtime: clawv1alpha1.RuntimeOpenClaw,
+			Runtime:     clawv1alpha1.RuntimeOpenClaw,
+			Credentials: testCredentials(),
 			SelfConfigure: &clawv1alpha1.SelfConfigureSpec{
 				Enabled:        true,
 				AllowedActions: []string{"skills", "config", "envVars"},
