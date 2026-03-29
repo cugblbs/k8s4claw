@@ -102,9 +102,9 @@ func run(ctx context.Context, cfg *slackConfig, client channelClient, mode strin
 	addr := fmt.Sprintf(":%d", cfg.ListenPort)
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 
-	go func() {
+	go func() { //nolint:gosec // G118: goroutine intentionally uses context.Background for graceful shutdown after parent ctx cancellation
 		<-ctx.Done()
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second) //nolint:gosec // G118: parent ctx is cancelled; need fresh context for graceful shutdown
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
 		_ = srv.Shutdown(shutdownCtx)
 	}()
