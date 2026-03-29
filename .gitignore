@@ -1,5 +1,8 @@
 # Binaries
 bin/
+/channel-slack
+/channel-webhook
+/ipcbus
 *.exe
 *.dll
 *.so
