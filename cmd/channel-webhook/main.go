@@ -103,7 +103,7 @@ func run(ctx context.Context, cfg *webhookConfig, mode string, s sender, buffere
 
 	go func() {
 		<-ctx.Done()
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second) //nolint:gosec // G118: parent ctx is cancelled; need fresh context for graceful shutdown
 		defer shutdownCancel()
 		_ = srv.Shutdown(shutdownCtx)
 	}()
