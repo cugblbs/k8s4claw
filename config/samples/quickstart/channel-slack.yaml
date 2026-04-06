@@ -1,0 +1,12 @@
+apiVersion: claw.prismer.ai/v1alpha1
+kind: ClawChannel
+metadata:
+  name: slack-team
+spec:
+  type: slack
+  mode: bidirectional
+  credentials:
+    secretRef:
+      name: slack-bot-token
+  config:
+    appId: "A0123456789"        # Replace with your Slack App ID

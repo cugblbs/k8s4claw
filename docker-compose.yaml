@@ -1,0 +1,16 @@
+services:
+  openclaw:
+    build:
+      context: runtimes/openclaw/
+      dockerfile: Dockerfile
+    ports:
+      - "18900:18900"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENCLAW_MODEL: ${OPENCLAW_MODEL:-claude-sonnet-4-20250514}
+      OPENCLAW_SYSTEM_PROMPT: ${OPENCLAW_SYSTEM_PROMPT:-You are a helpful team assistant.}
+    healthcheck:
+      test: ["CMD", "/usr/bin/claw-entrypoint", "--version || true"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

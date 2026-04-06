@@ -1,0 +1,15 @@
+apiVersion: claw.prismer.ai/v1alpha1
+kind: Claw
+metadata:
+  name: my-first-agent
+spec:
+  runtime: openclaw
+  config:
+    model: "claude-sonnet-4-20250514"
+    systemPrompt: "You are a helpful team assistant. Be concise and friendly."
+  credentials:
+    secretRef:
+      name: llm-api-keys
+  channels:
+    - name: slack-team
+      mode: bidirectional

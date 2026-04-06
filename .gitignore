@@ -3,6 +3,7 @@ bin/
 /channel-slack
 /channel-webhook
 /ipcbus
+/claw-init
 *.exe
 *.dll
 *.so
