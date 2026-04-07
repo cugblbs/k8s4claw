@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	defaultSocketPath        = "/var/run/claw/ipc.sock"
+	defaultSocketPath        = "/var/run/claw/bus.sock"
 	defaultBufferSize        = 256
 	defaultReconnectInterval = 2 * time.Second
 	defaultHeartbeatInterval = 30 * time.Second

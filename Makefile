@@ -5,6 +5,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 INIT_IMG ?= ghcr.io/prismer-ai/claw-init:$(VERSION)
 IPCBUS_IMG ?= ghcr.io/prismer-ai/claw-ipcbus:$(VERSION)
 SLACK_IMG ?= ghcr.io/prismer-ai/claw-channel-slack:$(VERSION)
+DISCORD_IMG ?= ghcr.io/prismer-ai/claw-channel-discord:$(VERSION)
 WEBHOOK_IMG ?= ghcr.io/prismer-ai/claw-channel-webhook:$(VERSION)
 OPENCLAW_IMG ?= ghcr.io/prismer-ai/k8s4claw-openclaw:$(VERSION)
 LDFLAGS := -X github.com/Prismer-AI/k8s4claw/internal/runtime.InitContainerImage=$(INIT_IMG)
@@ -63,13 +64,16 @@ docker-build-ipcbus: ## Build IPC bus docker image.
 docker-build-slack: ## Build Slack channel sidecar docker image.
 	docker build -t $(SLACK_IMG) -f Dockerfile.channel-slack .
 
+docker-build-discord: ## Build Discord channel sidecar docker image.
+	docker build -t $(DISCORD_IMG) -f Dockerfile.channel-discord .
+
 docker-build-webhook: ## Build webhook channel sidecar docker image.
 	docker build -t $(WEBHOOK_IMG) -f Dockerfile.channel-webhook .
 
 docker-build-openclaw: ## Build OpenClaw runtime docker image.
 	docker build -t $(OPENCLAW_IMG) -f runtimes/openclaw/Dockerfile runtimes/openclaw/
 
-docker-build-all: docker-build docker-build-init docker-build-ipcbus docker-build-slack docker-build-webhook docker-build-openclaw ## Build all docker images.
+docker-build-all: docker-build docker-build-init docker-build-ipcbus docker-build-slack docker-build-discord docker-build-webhook docker-build-openclaw ## Build all docker images.
 
 docker-push: ## Push operator docker image.
 	docker push $(IMG)
@@ -78,6 +82,7 @@ docker-push-all: docker-push ## Push all docker images.
 	docker push $(INIT_IMG)
 	docker push $(IPCBUS_IMG)
 	docker push $(SLACK_IMG)
+	docker push $(DISCORD_IMG)
 	docker push $(WEBHOOK_IMG)
 	docker push $(OPENCLAW_IMG)
 
