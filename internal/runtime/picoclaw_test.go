@@ -4,98 +4,19 @@ import (
 	"context"
 	"testing"
 
-	corev1 "k8s.io/api/core/v1"
-
 	"github.com/Prismer-AI/k8s4claw/api/v1alpha1"
 )
 
-func TestPicoClawValidate_RequiresCredentials(t *testing.T) {
+func TestPicoClawValidate_CredentialsOptional(t *testing.T) {
 	t.Parallel()
 	a := &PicoClawAdapter{}
 	ctx := context.Background()
 
+	// PicoClaw supports non-LLM workloads; no credentials required.
 	spec := &v1alpha1.ClawSpec{Runtime: v1alpha1.RuntimePicoClaw}
 	errs := a.Validate(ctx, spec)
-	if len(errs) == 0 {
-		t.Fatal("expected error when credentials are missing")
-	}
-	if errs[0].Field != "spec.credentials" {
-		t.Errorf("field = %q; want spec.credentials", errs[0].Field)
-	}
-}
-
-func TestPicoClawValidate_AcceptsSecretRef(t *testing.T) {
-	t.Parallel()
-	a := &PicoClawAdapter{}
-	ctx := context.Background()
-
-	spec := &v1alpha1.ClawSpec{
-		Runtime: v1alpha1.RuntimePicoClaw,
-		Credentials: &v1alpha1.CredentialSpec{
-			SecretRef: &corev1.LocalObjectReference{Name: "my-secret"},
-		},
-	}
-	errs := a.Validate(ctx, spec)
 	if len(errs) != 0 {
-		t.Fatalf("expected no errors, got %v", errs)
-	}
-}
-
-func TestPicoClawValidate_AcceptsExternalSecret(t *testing.T) {
-	t.Parallel()
-	a := &PicoClawAdapter{}
-	ctx := context.Background()
-
-	spec := &v1alpha1.ClawSpec{
-		Runtime: v1alpha1.RuntimePicoClaw,
-		Credentials: &v1alpha1.CredentialSpec{
-			ExternalSecret: &v1alpha1.ExternalSecretRef{
-				Provider: "vault",
-				Store:    "main",
-				Path:     "secret/picoclaw",
-			},
-		},
-	}
-	errs := a.Validate(ctx, spec)
-	if len(errs) != 0 {
-		t.Fatalf("expected no errors, got %v", errs)
-	}
-}
-
-func TestPicoClawValidate_AcceptsKeyMappingsOnly(t *testing.T) {
-	t.Parallel()
-	a := &PicoClawAdapter{}
-	ctx := context.Background()
-
-	spec := &v1alpha1.ClawSpec{
-		Runtime: v1alpha1.RuntimePicoClaw,
-		Credentials: &v1alpha1.CredentialSpec{
-			Keys: []v1alpha1.KeyMapping{
-				{
-					Name:         "OPENAI_API_KEY",
-					SecretKeyRef: corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "keys"}, Key: "openai"},
-				},
-			},
-		},
-	}
-	errs := a.Validate(ctx, spec)
-	if len(errs) != 0 {
-		t.Fatalf("expected no errors, got %v", errs)
-	}
-}
-
-func TestPicoClawValidate_EmptyCredentialSpec(t *testing.T) {
-	t.Parallel()
-	a := &PicoClawAdapter{}
-	ctx := context.Background()
-
-	spec := &v1alpha1.ClawSpec{
-		Runtime:     v1alpha1.RuntimePicoClaw,
-		Credentials: &v1alpha1.CredentialSpec{},
-	}
-	errs := a.Validate(ctx, spec)
-	if len(errs) == 0 {
-		t.Fatal("expected error for empty credential spec")
+		t.Fatalf("expected no errors for credential-less spec, got %v", errs)
 	}
 }
 

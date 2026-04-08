@@ -72,17 +72,9 @@ func (a *ZeroClawAdapter) GracefulShutdownSeconds() int32 {
 	return 5
 }
 
-func (a *ZeroClawAdapter) Validate(_ context.Context, spec *v1alpha1.ClawSpec) field.ErrorList {
-	var allErrs field.ErrorList
-
-	if !hasCredentials(spec) {
-		allErrs = append(allErrs, field.Required(
-			field.NewPath("spec", "credentials"),
-			"ZeroClaw requires credentials (secretRef, externalSecret, or keys)",
-		))
-	}
-
-	return allErrs
+func (a *ZeroClawAdapter) Validate(_ context.Context, _ *v1alpha1.ClawSpec) field.ErrorList {
+	// ZeroClaw supports non-LLM workloads; credentials are optional.
+	return nil
 }
 
 func (a *ZeroClawAdapter) ValidateUpdate(_ context.Context, oldSpec, newSpec *v1alpha1.ClawSpec) field.ErrorList {

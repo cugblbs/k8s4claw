@@ -71,17 +71,9 @@ func (a *PicoClawAdapter) GracefulShutdownSeconds() int32 {
 	return 2
 }
 
-func (a *PicoClawAdapter) Validate(_ context.Context, spec *v1alpha1.ClawSpec) field.ErrorList {
-	var allErrs field.ErrorList
-
-	if !hasCredentials(spec) {
-		allErrs = append(allErrs, field.Required(
-			field.NewPath("spec", "credentials"),
-			"PicoClaw requires credentials (secretRef, externalSecret, or keys)",
-		))
-	}
-
-	return allErrs
+func (a *PicoClawAdapter) Validate(_ context.Context, _ *v1alpha1.ClawSpec) field.ErrorList {
+	// PicoClaw supports non-LLM workloads; credentials are optional.
+	return nil
 }
 
 func (a *PicoClawAdapter) ValidateUpdate(_ context.Context, oldSpec, newSpec *v1alpha1.ClawSpec) field.ErrorList {
