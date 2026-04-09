@@ -30,6 +30,8 @@ jobs:
               - 'go.mod'
               - 'go.sum'
               - 'Makefile'
+              - 'Dockerfile*'
+              - 'runtimes/**/Dockerfile*'
             docs:
               - '**/*.md'
               - 'docs/**'
@@ -96,16 +98,72 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Install controller-gen
+        run: go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.17.2
       - name: Verify generated files are up to date
         run: |
-          # Re-generate deepcopy if controller-gen is available
-          if command -v controller-gen &> /dev/null; then
-            make generate
-          fi
-          # Check for drift
+          make generate
+          make manifests
           if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::Generated files are out of date. Run 'make generate' and commit the changes."
+            echo "::error::Generated files are out of date. Run 'make generate && make manifests' and commit the changes."
             git diff
+            exit 1
+          fi
+
+  docker-build:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - { name: operator, file: Dockerfile, context: . }
+          - { name: init, file: Dockerfile.init, context: . }
+          - { name: ipcbus, file: Dockerfile.ipcbus, context: . }
+          - { name: channel-slack, file: Dockerfile.channel-slack, context: . }
+          - { name: channel-webhook, file: Dockerfile.channel-webhook, context: . }
+          - { name: openclaw, file: runtimes/openclaw/Dockerfile, context: runtimes/openclaw }
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build ${{ matrix.target.name }}
+        run: docker build -f ${{ matrix.target.file }} ${{ matrix.target.context }}
+
+  govulncheck:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Run govulncheck
+        run: govulncheck ./...
+
+  coverage-gate:
+    needs: [changes, test]
+    if: needs.changes.outputs.go == 'true' && needs.test.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: coverage
+      - name: Check coverage threshold
+        run: |
+          THRESHOLD=60
+          TOTAL=$(go tool cover -func=coverage.out | grep '^total:' | awk '{print $NF}' | tr -d '%')
+          echo "Total coverage: ${TOTAL}%"
+          if awk "BEGIN {exit !(${TOTAL} < ${THRESHOLD})}"; then
+            echo "::error::Coverage ${TOTAL}% is below threshold ${THRESHOLD}%"
             exit 1
           fi
 
