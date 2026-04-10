@@ -74,7 +74,6 @@ func buildChannelContainer(channel *clawv1alpha1.ClawChannel, ref clawv1alpha1.C
 		{Name: "CHANNEL_NAME", Value: ref.Name},
 		{Name: "CHANNEL_TYPE", Value: string(channel.Spec.Type)},
 		{Name: "CHANNEL_MODE", Value: string(ref.Mode)},
-		{Name: "IPC_SOCKET_PATH", Value: "/var/run/claw/bus.sock"},
 	}
 
 	// Config JSON env var.
@@ -169,20 +168,5 @@ func isModeCompatible(requested, capability clawv1alpha1.ChannelMode) bool {
 
 // builtinChannelImage returns the container image for a built-in channel type.
 func builtinChannelImage(channelType clawv1alpha1.ChannelType) string {
-	switch channelType {
-	case clawv1alpha1.ChannelTypeSlack:
-		return "ghcr.io/prismer-ai/claw-channel-slack:latest"
-	case clawv1alpha1.ChannelTypeTelegram:
-		return "ghcr.io/prismer-ai/claw-channel-telegram:latest"
-	case clawv1alpha1.ChannelTypeWhatsApp:
-		return "ghcr.io/prismer-ai/claw-channel-whatsapp:latest"
-	case clawv1alpha1.ChannelTypeDiscord:
-		return "ghcr.io/prismer-ai/claw-channel-discord:latest"
-	case clawv1alpha1.ChannelTypeMatrix:
-		return "ghcr.io/prismer-ai/claw-channel-matrix:latest"
-	case clawv1alpha1.ChannelTypeWebhook:
-		return "ghcr.io/prismer-ai/claw-channel-webhook:latest"
-	default:
-		return fmt.Sprintf("ghcr.io/prismer-ai/claw-channel-%s:latest", string(channelType))
-	}
+	return fmt.Sprintf("ghcr.io/prismer-ai/claw-channel-%s:latest", string(channelType))
 }

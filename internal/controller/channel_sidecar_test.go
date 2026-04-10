@@ -71,9 +71,6 @@ func TestBuildChannelContainer_BuiltinNative(t *testing.T) {
 	if envMap["CHANNEL_MODE"] != "bidirectional" {
 		t.Errorf("expected CHANNEL_MODE=%q, got %q", "bidirectional", envMap["CHANNEL_MODE"])
 	}
-	if envMap["IPC_SOCKET_PATH"] != "/var/run/claw/bus.sock" {
-		t.Errorf("expected IPC_SOCKET_PATH=%q, got %q", "/var/run/claw/bus.sock", envMap["IPC_SOCKET_PATH"])
-	}
 
 	// Verify security context is set.
 	if c.SecurityContext == nil {
