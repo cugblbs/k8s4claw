@@ -22,6 +22,39 @@ make test
 make lint
 ```
 
+### Local Development
+
+1. Create a local Kubernetes cluster with kind or minikube and make sure `kubectl` points to it.
+2. Install the CRDs:
+
+```bash
+make install
+```
+
+3. Run the operator locally against your cluster:
+
+```bash
+make run
+```
+
+4. In a separate shell, apply a sample resource to verify reconciliation works:
+
+```bash
+kubectl apply -f config/samples/
+```
+
+For controller tests, install `setup-envtest` and ensure it is on your `PATH`, then run:
+
+```bash
+make test
+```
+
+To work on the IPC Bus locally, build it with:
+
+```bash
+make build-ipcbus
+```
+
 ## Making Changes
 
 ### Workflow
