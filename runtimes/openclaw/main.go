@@ -21,13 +21,15 @@ func main() {
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
 	model := envOr("OPENCLAW_MODEL", "claude-sonnet-4-20250514")
 	systemPrompt := envOr("OPENCLAW_SYSTEM_PROMPT", "You are a helpful team assistant.")
+	mock := envOr("OPENCLAW_MODE", "") == "mock" || apiKey == ""
 
-	if apiKey == "" {
-		slog.Error("ANTHROPIC_API_KEY is required")
-		os.Exit(1)
+	var handler *handler
+	if mock {
+		slog.Info("starting in mock mode (no Claude API calls)")
+		handler = newMockHandler(model, systemPrompt)
+	} else {
+		handler = newHandler(apiKey, model, systemPrompt)
 	}
-
-	handler := newHandler(apiKey, model, systemPrompt)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
@@ -72,7 +74,7 @@ func main() {
 		srv.Shutdown(shutdownCtx)
 	}()
 
-	slog.Info("openclaw runtime starting", "port", port, "model", model)
+	slog.Info("openclaw runtime starting", "port", port, "model", model, "mock", mock)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		slog.Error("server error", "error", err)
 		os.Exit(1)

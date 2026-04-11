@@ -34,6 +34,7 @@ type handler struct {
 	client       anthropic.Client
 	model        string
 	systemPrompt string
+	mockMode     bool
 }
 
 func newHandler(apiKey, model, systemPrompt string) *handler {
@@ -91,6 +92,10 @@ func (h *handler) handleMessage(ctx context.Context, msg *message) (*message, er
 	}
 
 	slog.Info("processing message", "msgId", msg.ID, "user", payload.User, "text_len", len(payload.Text))
+
+	if h.mockMode {
+		return h.buildResponse(msg, mockResponse(payload.Text)), nil
+	}
 
 	resp, err := h.client.Messages.New(ctx, anthropic.MessageNewParams{
 		Model:     h.model,
