@@ -9,6 +9,14 @@
 
 k8s4claw lets you deploy, connect, and operate AI agents on Kubernetes the same way you manage any other workload — declaratively, with built-in persistence, auto-updates, and inter-agent communication.
 
+<p align="center">
+  <a href="docs/demo.cast">
+    <img src="docs/demo-dracula.svg" alt="k8s4claw demo" width="800"/>
+  </a>
+  <br/>
+  <em>OpenClaw runtime in mock mode — <code>docker run -e OPENCLAW_MODE=mock</code></em>
+</p>
+
 ## Why k8s4claw?
 
 Running AI agents in production means solving the same problems over and over: secret management, persistent storage, graceful updates, inter-service communication, and observability. k8s4claw wraps all of this into a single `Claw` CRD so you can focus on what your agent does, not how it runs.
