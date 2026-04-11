@@ -19,6 +19,7 @@ func main() {
 
 	port := envOr("CLAW_GATEWAY_PORT", "18900")
 	apiKey := os.Getenv("ANTHROPIC_API_KEY")
+	baseURL := os.Getenv("ANTHROPIC_BASE_URL")
 	model := envOr("OPENCLAW_MODEL", "claude-sonnet-4-20250514")
 	systemPrompt := envOr("OPENCLAW_SYSTEM_PROMPT", "You are a helpful team assistant.")
 	mock := envOr("OPENCLAW_MODE", "") == "mock" || apiKey == ""
@@ -28,7 +29,7 @@ func main() {
 		slog.Info("starting in mock mode (no Claude API calls)")
 		handler = newMockHandler(model, systemPrompt)
 	} else {
-		handler = newHandler(apiKey, model, systemPrompt)
+		handler = newHandler(apiKey, model, systemPrompt, baseURL)
 	}
 
 	mux := http.NewServeMux()

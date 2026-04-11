@@ -37,8 +37,12 @@ type handler struct {
 	mockMode     bool
 }
 
-func newHandler(apiKey, model, systemPrompt string) *handler {
-	client := anthropic.NewClient(option.WithAPIKey(apiKey))
+func newHandler(apiKey, model, systemPrompt, baseURL string) *handler {
+	opts := []option.RequestOption{option.WithAPIKey(apiKey)}
+	if baseURL != "" {
+		opts = append(opts, option.WithBaseURL(baseURL))
+	}
+	client := anthropic.NewClient(opts...)
 	return &handler{
 		client:       client,
 		model:        model,
