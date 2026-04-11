@@ -34,8 +34,15 @@
       ],
       "settings": {
         "go.lintTool": "golangci-lint",
-        "go.testFlags": ["-race"]
+        "go.testFlags": ["-race"],
+        "terminal.integrated.defaultProfile.linux": "bash"
       }
     }
+  },
+
+  "hostRequirements": {
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "32gb"
   }
 }
