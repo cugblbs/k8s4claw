@@ -73,9 +73,10 @@ func (a *ZeroClawAdapter) GracefulShutdownSeconds() int32 {
 }
 
 func (a *ZeroClawAdapter) Validate(_ context.Context, _ *v1alpha1.ClawSpec) field.ErrorList {
+	// ZeroClaw supports non-LLM workloads; credentials are optional.
 	return nil
 }
 
-func (a *ZeroClawAdapter) ValidateUpdate(_ context.Context, _, _ *v1alpha1.ClawSpec) field.ErrorList {
-	return nil
+func (a *ZeroClawAdapter) ValidateUpdate(_ context.Context, oldSpec, newSpec *v1alpha1.ClawSpec) field.ErrorList {
+	return validatePersistenceUpdate(oldSpec, newSpec)
 }

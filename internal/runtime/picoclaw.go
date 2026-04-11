@@ -72,9 +72,10 @@ func (a *PicoClawAdapter) GracefulShutdownSeconds() int32 {
 }
 
 func (a *PicoClawAdapter) Validate(_ context.Context, _ *v1alpha1.ClawSpec) field.ErrorList {
+	// PicoClaw supports non-LLM workloads; credentials are optional.
 	return nil
 }
 
-func (a *PicoClawAdapter) ValidateUpdate(_ context.Context, _, _ *v1alpha1.ClawSpec) field.ErrorList {
-	return nil
+func (a *PicoClawAdapter) ValidateUpdate(_ context.Context, oldSpec, newSpec *v1alpha1.ClawSpec) field.ErrorList {
+	return validatePersistenceUpdate(oldSpec, newSpec)
 }
