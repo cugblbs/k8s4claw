@@ -11,11 +11,11 @@
 k8s4claw lets you deploy, connect, and operate AI agents on Kubernetes the same way you manage any other workload — declaratively, with built-in persistence, auto-updates, and inter-agent communication.
 
 <p align="center">
-  <a href="docs/demo.cast">
-    <img src="docs/demo-dracula.svg" alt="k8s4claw demo" width="800"/>
+  <a href="docs/demo-k8s.cast">
+    <img src="docs/demo-k8s.svg" alt="k8s4claw K8s demo" width="800"/>
   </a>
   <br/>
-  <em>OpenClaw runtime in mock mode — <code>docker run -e OPENCLAW_MODE=mock</code></em>
+  <em>kind cluster → deploy agent → kubectl get pods → WebSocket chat</em>
 </p>
 
 ## Why k8s4claw?
