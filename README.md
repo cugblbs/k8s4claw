@@ -4,6 +4,7 @@
 [![CodeQL](https://github.com/Prismer-AI/k8s4claw/actions/workflows/codeql.yml/badge.svg)](https://github.com/Prismer-AI/k8s4claw/actions/workflows/codeql.yml)
 [![Go Report Card](https://goreportcard.com/badge/github.com/Prismer-AI/k8s4claw)](https://goreportcard.com/report/github.com/Prismer-AI/k8s4claw)
 [![License](https://img.shields.io/github/license/Prismer-AI/k8s4claw)](LICENSE)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Prismer-AI/k8s4claw?quickstart=1)
 
 **Kubernetes operator for managing heterogeneous AI agent runtimes.** One CRD, any runtime, production-ready from day one.
 
