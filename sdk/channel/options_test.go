@@ -2,13 +2,13 @@ package channel
 
 import "testing"
 
-func TestDefaultConfig_UsesLegacyDefaultSocketPath(t *testing.T) {
+func TestDefaultConfig_UsesDefaultBusSocketPath(t *testing.T) {
 	t.Setenv("IPC_SOCKET_PATH", "")
 
 	cfg := defaultConfig()
 
-	if cfg.socketPath != "/var/run/claw/ipc.sock" {
-		t.Fatalf("default socketPath = %q, want %q", cfg.socketPath, "/var/run/claw/ipc.sock")
+	if cfg.socketPath != "/var/run/claw/bus.sock" {
+		t.Fatalf("default socketPath = %q, want %q", cfg.socketPath, "/var/run/claw/bus.sock")
 	}
 }
 
