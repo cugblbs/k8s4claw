@@ -48,6 +48,9 @@ jobs:
           - image: claw-channel-slack
             dockerfile: Dockerfile.channel-slack
             context: .
+          - image: claw-channel-discord
+            dockerfile: Dockerfile.channel-discord
+            context: .
           - image: claw-channel-webhook
             dockerfile: Dockerfile.channel-webhook
             context: .
