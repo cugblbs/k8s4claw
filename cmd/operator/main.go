@@ -41,12 +41,14 @@ func main() {
 	var probeAddr string
 	var enableLeaderElection bool
 	var enableNativeSidecars bool
+	var disableWebhooks bool
 	var webhookPort int
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false, "Enable leader election for controller manager.")
 	flag.BoolVar(&enableNativeSidecars, "enable-native-sidecars", true, "Use native sidecars (K8s 1.28+). Set false for older clusters.")
+	flag.BoolVar(&disableWebhooks, "disable-webhooks", false, "Disable admission webhooks (for local development without certs).")
 	flag.IntVar(&webhookPort, "webhook-port", 9443, "The port the webhook server binds to.")
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
@@ -54,14 +56,18 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgrOpts := ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "k8s4claw-operator.prismer.ai",
-		WebhookServer:          webhook.NewServer(webhook.Options{Port: webhookPort}),
-	})
+	}
+	if !disableWebhooks {
+		mgrOpts.WebhookServer = webhook.NewServer(webhook.Options{Port: webhookPort})
+	}
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), mgrOpts)
 	if err != nil {
 		setupLog.Error(err, "unable to create manager")
 		os.Exit(1)
@@ -120,13 +126,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Register admission webhooks.
-	if err := builder.WebhookManagedBy[*clawv1alpha1.Claw](mgr, &clawv1alpha1.Claw{}).
-		WithValidator(&clawwebhook.ClawValidator{Registry: registry}).
-		WithDefaulter(&clawwebhook.ClawDefaulter{}).
-		Complete(); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "Claw")
-		os.Exit(1)
+	// Register admission webhooks (unless disabled for local dev).
+	if !disableWebhooks {
+		if err := builder.WebhookManagedBy[*clawv1alpha1.Claw](mgr, &clawv1alpha1.Claw{}).
+			WithValidator(&clawwebhook.ClawValidator{Registry: registry}).
+			WithDefaulter(&clawwebhook.ClawDefaulter{}).
+			Complete(); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "Claw")
+			os.Exit(1)
+		}
 	}
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -145,7 +153,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	setupLog.Info("starting manager")
+	setupLog.Info("starting manager", "webhooks", !disableWebhooks)
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "unable to run manager")
 		os.Exit(1)

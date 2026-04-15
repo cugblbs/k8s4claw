@@ -462,6 +462,7 @@ func mergeAutoUpdateStatus(claw *clawv1alpha1.Claw, local *clawv1alpha1.AutoUpda
 
 func (r *AutoUpdateReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		Named("claw-autoupdate").
 		For(&clawv1alpha1.Claw{}).
 		Complete(r)
 }
