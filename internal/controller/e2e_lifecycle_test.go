@@ -226,7 +226,7 @@ func TestE2E_MultiRuntime(t *testing.T) {
 		{clawv1alpha1.RuntimeZeroClaw, "ghcr.io/prismer-ai/k8s4claw-zeroclaw:latest", 3000, false},
 		{clawv1alpha1.RuntimePicoClaw, "ghcr.io/prismer-ai/k8s4claw-picoclaw:latest", 8080, false},
 		{clawv1alpha1.RuntimeIronClaw, "ghcr.io/prismer-ai/k8s4claw-ironclaw:latest", 3001, true},
-		{clawv1alpha1.RuntimeHermesClaw, "docker.io/nousresearch/hermes-agent:latest", 8642, true},
+		{clawv1alpha1.RuntimeHermesClaw, "ghcr.io/nousresearch/hermes-agent:latest", 8642, true},
 	}
 
 	for _, tt := range tests {

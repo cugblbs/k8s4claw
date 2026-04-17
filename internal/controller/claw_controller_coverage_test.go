@@ -573,7 +573,7 @@ func TestClawReconciler_AllRuntimes(t *testing.T) {
 		{clawv1alpha1.RuntimeNanoClaw, 19000, "ghcr.io/prismer-ai/k8s4claw-nanoclaw:latest", 30, false, false},
 		{clawv1alpha1.RuntimeZeroClaw, 3000, "ghcr.io/prismer-ai/k8s4claw-zeroclaw:latest", 20, false, false},
 		{clawv1alpha1.RuntimePicoClaw, 8080, "ghcr.io/prismer-ai/k8s4claw-picoclaw:latest", 17, false, false},
-		{clawv1alpha1.RuntimeHermesClaw, 8642, "docker.io/nousresearch/hermes-agent:latest", 75, true, true},
+		{clawv1alpha1.RuntimeHermesClaw, 8642, "ghcr.io/nousresearch/hermes-agent:latest", 75, true, true},
 	}
 
 	for _, rt := range runtimes {
